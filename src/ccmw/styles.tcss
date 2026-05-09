@@ -1,0 +1,428 @@
+/* =========================================================================
+   ccmw — Textual CSS (styles.tcss)
+   Dark theme: surface background, accent highlights
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   Screen / Root
+   ------------------------------------------------------------------------- */
+
+Screen {
+    background: $background;
+    layout: vertical;
+}
+
+/* -------------------------------------------------------------------------
+   Main container — horizontal split: FileBrowser(25%) + FileViewer(35%) + TerminalPanel(40%)
+   ------------------------------------------------------------------------- */
+
+#main-container {
+    layout: horizontal;
+    width: 100%;
+    height: 1fr;
+}
+
+/* -------------------------------------------------------------------------
+   Layout presets — 'l' 키로 순환
+   ------------------------------------------------------------------------- */
+
+/* layout-wide: FileViewer 숨김, FileBrowser 20%, terminal 80% */
+#main-container.layout-wide #file-viewer {
+    display: none;
+}
+#main-container.layout-wide #file-browser-pane {
+    width: 20%;
+}
+#main-container.layout-wide #terminal-panel {
+    width: 80%;
+}
+
+/* layout-focus: FileBrowser + FileViewer 숨김, terminal 100% */
+#main-container.layout-focus #file-viewer {
+    display: none;
+}
+#main-container.layout-focus #file-browser-pane {
+    display: none;
+}
+#main-container.layout-focus #terminal-panel {
+    width: 100%;
+}
+
+/* -------------------------------------------------------------------------
+   FileBrowser pane — Vertical wrapper (width + border 소유)
+   ------------------------------------------------------------------------- */
+
+#file-browser-pane {
+    width: 25%;
+    height: 100%;
+    border: solid $surface-lighten-2;
+    background: $surface;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+    scrollbar-color-active: $accent-lighten-1;
+}
+
+#file-browser-pane:focus-within {
+    border: solid $accent;
+}
+
+/* -------------------------------------------------------------------------
+   상태바 (현재 경로 + 한/영 표시)
+   ------------------------------------------------------------------------- */
+
+#status-bar {
+    width: 100%;
+    height: 1;
+    background: $surface-lighten-1;
+}
+
+#current-dir {
+    width: 1fr;
+    height: 1;
+    content-align: left middle;
+    padding: 0 1;
+    color: $text-muted;
+    overflow: hidden hidden;
+    text-wrap: nowrap;
+}
+
+#git-branch {
+    width: auto;
+    height: 1;
+    content-align: center middle;
+    padding: 0 1;
+    color: $text-muted;
+}
+
+#git-branch.git-dirty {
+    color: yellow;
+}
+
+#git-branch.git-clean {
+    color: $success;
+}
+
+#input-lang {
+    width: 4;
+    height: 1;
+    content-align: center middle;
+    text-style: bold;
+}
+
+#input-lang.lang-ko {
+    background: #c0392b;
+    color: #ffffff;
+}
+
+#input-lang.lang-en {
+    background: $accent;
+    color: $background;
+}
+
+/* -------------------------------------------------------------------------
+   FileBrowser widget
+   ------------------------------------------------------------------------- */
+
+#file-browser {
+    width: 100%;
+    height: 1fr;
+    background: $surface;
+}
+
+FileBrowser {
+    background: $surface;
+}
+
+FileBrowser > .tree--cursor {
+    background: $accent-darken-2;
+    color: $text;
+}
+
+FileBrowser:focus > .tree--cursor {
+    background: $accent;
+    color: $text;
+}
+
+FileBrowser .tree--highlight {
+    background: $surface-lighten-1;
+}
+
+/* -------------------------------------------------------------------------
+   FileViewer panel — 가로/세로 스크롤 모두 활성화
+   ------------------------------------------------------------------------- */
+
+#file-viewer {
+    display: none;
+    width: 35%;
+    height: 100%;
+    border: solid $surface-lighten-2;
+    background: $surface-darken-1;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+    scrollbar-color-active: $accent-lighten-1;
+}
+
+#main-container.viewer-open #file-viewer {
+    display: block;
+}
+
+#main-container.viewer-open #terminal-panel {
+    width: 40%;
+}
+
+#file-viewer:focus-within {
+    border: solid $accent;
+}
+
+FileViewer {
+    background: $surface-darken-1;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+FileViewer > #viewer-title {
+    width: 100%;
+    height: 1;
+    background: $surface-lighten-1;
+    color: $text-muted;
+    padding: 0 1;
+    text-style: bold;
+}
+
+FileViewer > #viewer-scroll {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 1;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+FileViewer > #viewer-scroll > #file-content {
+    width: auto;
+    background: $surface-darken-1;
+}
+
+FileViewer.word-wrap-on > #viewer-scroll > #file-content {
+    width: 1fr;
+}
+
+/* -------------------------------------------------------------------------
+   TerminalPanel / MultiTerminalPanel panel
+   ------------------------------------------------------------------------- */
+
+#terminal-panel {
+    width: 1fr;
+    height: 100%;
+    border: solid $surface-lighten-2;
+    background: $surface-darken-1;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+    scrollbar-color-active: $accent-lighten-1;
+}
+
+#terminal-panel:focus-within {
+    border: solid $accent;
+}
+
+MultiTerminalPanel {
+    background: $surface-darken-1;
+}
+
+MultiTerminalPanel TabbedContent {
+    background: $surface-darken-1;
+}
+
+MultiTerminalPanel TabPane {
+    padding: 0;
+    background: $surface-darken-1;
+}
+
+TerminalPanel {
+    background: $surface-darken-1;
+}
+
+TerminalPanel > #terminal-output {
+    width: 1fr;
+    height: 1fr;
+    background: $surface-darken-1;
+    color: $text;
+    text-wrap: nowrap;
+    overflow: hidden hidden;
+}
+
+/* -------------------------------------------------------------------------
+   SessionPanel — bottom panel
+   ------------------------------------------------------------------------- */
+
+#session-panel {
+    width: 100%;
+    height: auto;
+    max-height: 14;
+    border: solid $surface-lighten-2;
+    background: $surface;
+    layer: base;
+}
+
+#session-panel:focus-within {
+    border: solid $accent;
+}
+
+#session-list-title {
+    background: $surface-lighten-1;
+    color: $accent;
+    text-style: bold;
+    padding: 0 1;
+    width: 100%;
+}
+
+#session-list-view {
+    height: 1fr;
+    background: $surface;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+}
+
+#session-list-view > ListItem {
+    background: $surface;
+    padding: 0 1;
+    border-left: thick $surface;
+}
+
+#session-list-view > ListItem:hover {
+    background: $surface-lighten-1;
+}
+
+#session-list-view > ListItem.--highlight {
+    background: $surface-lighten-2;
+    color: $text;
+    text-style: bold;
+    border-left: thick $surface-lighten-2;
+}
+
+#session-list-view > ListItem.--highlight > Label {
+    background: $surface-lighten-2;
+    color: $text;
+    text-style: bold;
+    width: 100%;
+}
+
+#session-list-view:focus > ListItem.--highlight {
+    background: $accent;
+    border-left: thick $accent-lighten-2;
+}
+
+#session-list-view:focus > ListItem.--highlight > Label {
+    background: $accent;
+    color: $background;
+    text-style: bold;
+    width: 100%;
+}
+
+/* -------------------------------------------------------------------------
+   GitPanel — bottom panel
+   ------------------------------------------------------------------------- */
+
+#git-panel {
+    width: 100%;
+    height: auto;
+    max-height: 18;
+    border: solid $surface-lighten-2;
+    background: $surface;
+    layer: base;
+}
+
+#git-panel:focus-within {
+    border: solid $accent;
+}
+
+#git-panel-title {
+    background: $surface-lighten-1;
+    color: $accent;
+    text-style: bold;
+    padding: 0 1;
+    width: 100%;
+}
+
+#git-file-list {
+    height: 1fr;
+    background: $surface;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+}
+
+#git-file-list > ListItem {
+    background: $surface;
+    padding: 0 1;
+    border-left: thick $surface;
+}
+
+#git-file-list > ListItem:hover {
+    background: $surface-lighten-1;
+}
+
+#git-file-list > ListItem.--highlight {
+    background: $surface-lighten-2;
+    border-left: thick $surface-lighten-2;
+}
+
+#git-file-list:focus > ListItem.--highlight {
+    background: $accent-darken-2;
+    border-left: thick $accent;
+}
+
+#git-commit-msg {
+    width: 100%;
+    height: 3;
+    margin: 0;
+    background: $surface-darken-1;
+    border: tall $surface-lighten-2;
+}
+
+#git-buttons {
+    width: 100%;
+    height: 3;
+    align: right middle;
+    padding: 0 1;
+}
+
+#git-buttons Button {
+    margin: 0 0 0 1;
+    min-width: 12;
+}
+
+/* -------------------------------------------------------------------------
+   Utility
+   ------------------------------------------------------------------------- */
+
+.hidden {
+    display: none;
+}
+
+/* -------------------------------------------------------------------------
+   Header / Footer
+   ------------------------------------------------------------------------- */
+
+Header {
+    background: $surface-lighten-1;
+    color: $accent;
+    text-style: bold;
+    dock: top;
+    height: 1;
+}
+
+Footer {
+    background: $surface-lighten-1;
+    color: $text-muted;
+    dock: bottom;
+    height: 1;
+}
+
+Footer > .footer--key {
+    color: $accent;
+    text-style: bold;
+    background: $surface-darken-1;
+}
+
+Footer > .footer--description {
+    color: $text-muted;
+}
