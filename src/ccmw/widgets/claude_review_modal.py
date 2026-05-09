@@ -19,6 +19,7 @@ class ClaudeReviewModal(ModalScreen):
     """claude -p 스트리밍으로 diff 리뷰를 보여주고 추가 질문을 이어받는 모달."""
 
     BINDINGS = [
+        Binding("c", "copy", "복사", show=True),
         Binding("escape", "dismiss", "닫기", show=True),
     ]
 
@@ -72,6 +73,7 @@ class ClaudeReviewModal(ModalScreen):
         self._session_id: str | None = None
         self._running = False
         self._line_buf = ""
+        self._full_text = ""
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -232,6 +234,7 @@ class ClaudeReviewModal(ModalScreen):
     def _write_line(self, line: str) -> None:
         try:
             self.query_one("#review-log", RichLog).write(Text(line))
+            self._full_text += line + "\n"
         except Exception:
             pass
 
@@ -253,6 +256,23 @@ class ClaudeReviewModal(ModalScreen):
         except Exception:
             pass
 
+    def action_copy(self) -> None:
+        text = self._full_text.strip()
+        if not text:
+            self.app.notify("복사할 내용이 없습니다", severity="warning")
+            return
+        try:
+            subprocess.run(["pbcopy"], input=text, text=True, check=True)
+            self.app.notify("클립보드에 복사됐습니다", timeout=2)
+        except FileNotFoundError:
+            try:
+                subprocess.run(["xclip", "-selection", "clipboard"], input=text, text=True, check=True)
+                self.app.notify("클립보드에 복사됐습니다", timeout=2)
+            except Exception as exc:
+                self.app.notify(f"복사 실패: {exc}", severity="error")
+        except Exception as exc:
+            self.app.notify(f"복사 실패: {exc}", severity="error")
+
     # ------------------------------------------------------------------
     # 추가 질문 처리
     # ------------------------------------------------------------------
@@ -266,7 +286,10 @@ class ClaudeReviewModal(ModalScreen):
         self._running = True
         event.input.value = ""
         event.input.disabled = True
+        separator = "─" * 60
         log = self.query_one("#review-log", RichLog)
-        log.write(Text("─" * 60, style="bright_black"))
+        log.write(Text(separator, style="bright_black"))
         log.write(Text(f"❓ {question}", style="bold cyan"))
+        self._full_text += separator + "\n"
+        self._full_text += f"❓ {question}\n"
         self._start_follow_up(question)
