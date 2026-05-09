@@ -61,14 +61,6 @@ class NewTabPicker(ModalScreen):
         self.dismiss(None)
 
 
-# 레이아웃 프리셋: (표시 이름, main-container에 추가할 CSS 클래스)
-_LAYOUTS: list[tuple[str, str]] = [
-    ("표준 (25/35/40)", ""),
-    ("터미널 넓게 (20/80)", "layout-wide"),
-    ("터미널 전체", "layout-focus"),
-]
-
-
 class CCMWApp(App):
     """Claude Code Multi-Window TUI application."""
 
@@ -82,7 +74,6 @@ class CCMWApp(App):
         Binding("shift+tab", "focus_previous", "이전 패널"),
         Binding("ctrl+n", "new_tab", "새 탭"),
         Binding("ctrl+w", "close_terminal", "터미널 닫기"),
-        Binding("l", "cycle_layout", "레이아웃 전환"),
         Binding("s", "toggle_sessions", "세션 목록"),
         Binding("r", "refresh_sessions", "새로고침"),
         Binding("e", "toggle_viewer", "뷰어 토글"),
@@ -96,7 +87,6 @@ class CCMWApp(App):
         self._session_panel_visible: bool = False
         self._git_panel_visible: bool = False
         self._viewer_visible: bool = False
-        self._layout_idx: int = 0
         self._last_lang: str = ""
 
     # ------------------------------------------------------------------
@@ -294,18 +284,6 @@ class CCMWApp(App):
                 self.notify("탭 닫힘", timeout=1.5)
         except Exception:
             pass
-
-    def action_cycle_layout(self) -> None:
-        """레이아웃 프리셋을 순환한다."""
-        container = self.query_one("#main-container")
-        current_cls = _LAYOUTS[self._layout_idx][1]
-        if current_cls:
-            container.remove_class(current_cls)
-        self._layout_idx = (self._layout_idx + 1) % len(_LAYOUTS)
-        name, new_cls = _LAYOUTS[self._layout_idx]
-        if new_cls:
-            container.add_class(new_cls)
-        self.notify(f"레이아웃: {name}", timeout=1.5)
 
     def action_toggle_sessions(self) -> None:
         panel = self.query_one("#session-panel", SessionPanel)

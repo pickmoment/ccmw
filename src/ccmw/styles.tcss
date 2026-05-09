@@ -13,7 +13,7 @@ Screen {
 }
 
 /* -------------------------------------------------------------------------
-   Main container — horizontal split: FileBrowser(25%) + FileViewer(35%) + TerminalPanel(40%)
+   Main container — horizontal split: FileBrowser(18%) + FileViewer(42%) + TerminalPanel(1fr)
    ------------------------------------------------------------------------- */
 
 #main-container {
@@ -23,37 +23,11 @@ Screen {
 }
 
 /* -------------------------------------------------------------------------
-   Layout presets — 'l' 키로 순환
-   ------------------------------------------------------------------------- */
-
-/* layout-wide: FileViewer 숨김, FileBrowser 20%, terminal 80% */
-#main-container.layout-wide #file-viewer {
-    display: none;
-}
-#main-container.layout-wide #file-browser-pane {
-    width: 20%;
-}
-#main-container.layout-wide #terminal-panel {
-    width: 80%;
-}
-
-/* layout-focus: FileBrowser + FileViewer 숨김, terminal 100% */
-#main-container.layout-focus #file-viewer {
-    display: none;
-}
-#main-container.layout-focus #file-browser-pane {
-    display: none;
-}
-#main-container.layout-focus #terminal-panel {
-    width: 100%;
-}
-
-/* -------------------------------------------------------------------------
    FileBrowser pane — Vertical wrapper (width + border 소유)
    ------------------------------------------------------------------------- */
 
 #file-browser-pane {
-    width: 25%;
+    width: 18%;
     height: 100%;
     border: solid $surface-lighten-2;
     background: $surface;
@@ -153,7 +127,7 @@ FileBrowser .tree--highlight {
 
 #file-viewer {
     display: none;
-    width: 35%;
+    width: 42%;
     height: 100%;
     border: solid $surface-lighten-2;
     background: $surface-darken-1;
@@ -324,8 +298,8 @@ TerminalPanel > #terminal-output {
 
 #git-panel {
     width: 100%;
-    height: auto;
-    max-height: 18;
+    height: 32;
+    max-height: 32;
     border: solid $surface-lighten-2;
     background: $surface;
     layer: base;
@@ -341,6 +315,18 @@ TerminalPanel > #terminal-output {
     text-style: bold;
     padding: 0 1;
     width: 100%;
+    height: 1;
+}
+
+#git-panel-body {
+    width: 100%;
+    height: 1fr;
+}
+
+#git-panel-left {
+    width: 36;
+    height: 100%;
+    border-right: solid $surface-lighten-2;
 }
 
 #git-file-list {
@@ -388,6 +374,58 @@ TerminalPanel > #terminal-output {
 #git-buttons Button {
     margin: 0 0 0 1;
     min-width: 12;
+}
+
+#btn-review {
+    width: 100%;
+    height: 3;
+    margin: 0;
+}
+
+#git-diff-pane {
+    width: 1fr;
+    height: 100%;
+}
+
+#git-diff-title {
+    width: 100%;
+    height: 1;
+    background: $surface-lighten-1;
+    color: $text-muted;
+    padding: 0 1;
+    text-style: bold;
+}
+
+#git-diff-unified {
+    width: 100%;
+    height: 1fr;
+    background: $surface-darken-1;
+    padding: 0 1;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+}
+
+#git-diff-split {
+    width: 100%;
+    height: 1fr;
+}
+
+#git-diff-old {
+    width: 1fr;
+    height: 100%;
+    background: $surface-darken-1;
+    padding: 0 1;
+    border-right: solid $surface-lighten-2;
+    scrollbar-size: 0 0;
+}
+
+#git-diff-new {
+    width: 1fr;
+    height: 100%;
+    background: $surface-darken-1;
+    padding: 0 1;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
 }
 
 /* -------------------------------------------------------------------------
