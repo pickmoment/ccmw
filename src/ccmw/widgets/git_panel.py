@@ -619,7 +619,7 @@ class GitPanel(Container):
         else:
             err = result.stderr.strip() or result.stdout.strip()
             self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
-        self.call_from_thread(self.action_refresh)
+        self.app.call_from_thread(self.action_refresh)
 
     @work(thread=True)
     def _do_create_branch(self, branch_name: str) -> None:
@@ -639,7 +639,7 @@ class GitPanel(Container):
         else:
             err = result.stderr.strip() or result.stdout.strip()
             self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
-        self.call_from_thread(self.action_refresh)
+        self.app.call_from_thread(self.action_refresh)
 
     @work(thread=True)
     def _do_delete_branch(self, branch_name: str) -> None:
@@ -658,7 +658,7 @@ class GitPanel(Container):
         else:
             err = result.stderr.strip() or result.stdout.strip()
             self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
-        self.call_from_thread(self.action_refresh)
+        self.app.call_from_thread(self.action_refresh)
 
     # ------------------------------------------------------------------
     # Diff loading (변경사항 뷰 전용)
@@ -795,7 +795,7 @@ class GitPanel(Container):
         except Exception as exc:
             self.app.call_from_thread(self.app.notify, str(exc), severity="error")
         finally:
-            self.call_from_thread(self.action_refresh)
+            self.app.call_from_thread(self.action_refresh)
 
     @work(thread=True)
     def _do_push(self) -> None:
@@ -820,7 +820,7 @@ class GitPanel(Container):
         except Exception as exc:
             self.app.call_from_thread(self.app.notify, str(exc), severity="error")
         finally:
-            self.call_from_thread(self.action_refresh)
+            self.app.call_from_thread(self.action_refresh)
 
     # ------------------------------------------------------------------
     # Button handler
