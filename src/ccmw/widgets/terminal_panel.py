@@ -506,6 +506,15 @@ class TerminalPanel(Widget):
         if not self._running or self._master_fd is None:
             return
 
+        if event.key == "ctrl+v":
+            path = self._save_clipboard_image()
+            if path:
+                self._write_to_pty(path.encode("utf-8"))
+                self.app.notify(f"이미지: {path}", timeout=4)
+                event.stop()
+                event.prevent_default()
+                return
+
         key_bytes = _KEY_MAP.get(event.key)
         if key_bytes is None and event.character:
             key_bytes = event.character.encode("utf-8", errors="replace")
@@ -527,6 +536,10 @@ class TerminalPanel(Widget):
             return
         text = event.text
         if not text:
+            path = self._save_clipboard_image()
+            if path:
+                self._write_to_pty(path.encode("utf-8"))
+                self.app.notify(f"이미지: {path}", timeout=4)
             return
         if self._scroll_offset != 0:
             self._scroll_offset = 0
@@ -537,6 +550,80 @@ class TerminalPanel(Widget):
             self._running = False
             self._cleanup_fd()
         event.stop()
+
+    def _write_to_pty(self, data: bytes) -> None:
+        if self._scroll_offset != 0:
+            self._scroll_offset = 0
+            self._update_display()
+        try:
+            os.write(self._master_fd, data)
+        except OSError:
+            self._running = False
+            self._cleanup_fd()
+
+    def _save_clipboard_image(self) -> str | None:
+        """클립보드 이미지를 임시 PNG 파일로 저장하고 경로를 반환. 이미지 없으면 None."""
+        import subprocess
+        import tempfile
+
+        tmp = tempfile.mktemp(suffix=".png", prefix="ccmw_paste_")
+
+        script_png = f"""
+try
+    set imgData to (the clipboard as «class PNGf»)
+    set fileHandle to open for access (POSIX file "{tmp}") with write permission
+    set eof of fileHandle to 0
+    write imgData to fileHandle
+    close access fileHandle
+    return "{tmp}"
+on error
+    return ""
+end try
+"""
+        try:
+            result = subprocess.run(
+                ["osascript", "-"],
+                input=script_png,
+                capture_output=True, text=True, timeout=5,
+            )
+            path = result.stdout.strip()
+            if path:
+                return path
+        except Exception:
+            pass
+
+        # TIFF fallback → sips로 PNG 변환
+        tmp_tiff = tempfile.mktemp(suffix=".tiff", prefix="ccmw_paste_")
+        script_tiff = f"""
+try
+    set imgData to (the clipboard as «class TIFF»)
+    set fileHandle to open for access (POSIX file "{tmp_tiff}") with write permission
+    set eof of fileHandle to 0
+    write imgData to fileHandle
+    close access fileHandle
+    return "{tmp_tiff}"
+on error
+    return ""
+end try
+"""
+        try:
+            result = subprocess.run(
+                ["osascript", "-"],
+                input=script_tiff,
+                capture_output=True, text=True, timeout=5,
+            )
+            tiff_path = result.stdout.strip()
+            if tiff_path:
+                conv = subprocess.run(
+                    ["sips", "-s", "format", "png", tiff_path, "--out", tmp],
+                    capture_output=True, timeout=10,
+                )
+                if conv.returncode == 0:
+                    return tmp
+        except Exception:
+            pass
+
+        return None
 
     # ------------------------------------------------------------------
     # 마우스 스크롤

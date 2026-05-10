@@ -215,6 +215,7 @@ class GitPanel(Container):
         Binding("a", "stage_all", "모두 스테이지", show=True),
         Binding("d", "toggle_diff_mode", "Diff 모드", show=True),
         Binding("p", "pull", "Pull", show=True, priority=True),
+        Binding("u", "push", "Push", show=True, priority=True),
         Binding("b", "toggle_branches", "브랜치", show=True, priority=True),
         Binding("n", "new_branch_input", "새 브랜치", show=False),
         Binding("ctrl+d", "delete_branch", "브랜치 삭제", show=False),
@@ -251,9 +252,9 @@ class GitPanel(Container):
                     with Horizontal(id="git-stage-row"):
                         yield Button("스테이지 (a)", id="btn-stage-all")
                         yield Button("커밋", id="btn-commit", variant="primary")
-                    with Horizontal(id="git-remote-row"):
+                    with Vertical(id="git-remote-row"):
                         yield Button("Pull ↓ (p)", id="btn-pull")
-                        yield Button("Push ↑", id="btn-push", variant="warning")
+                        yield Button("Push ↑ (u)", id="btn-push", variant="warning")
                     yield Button("AI 리뷰 (v)", id="btn-review", variant="success")
                     yield Button("git init (i)", id="btn-git-init", variant="warning", classes="hidden")
                 # 브랜치 뷰 (기본 숨김)
@@ -465,6 +466,9 @@ class GitPanel(Container):
 
     def action_pull(self) -> None:
         self._do_pull()
+
+    def action_push(self) -> None:
+        self._do_push()
 
     def action_init(self) -> None:
         if self._root is not None:
@@ -774,32 +778,30 @@ class GitPanel(Container):
     @work(thread=True)
     def _do_pull(self) -> None:
         cwd = self._work_dir()
-        self.app.call_from_thread(self.app.notify, "Pull 중...", timeout=2)
         try:
+            self.app.call_from_thread(self.app.notify, "Pull 중...", timeout=2)
             result = subprocess.run(
                 ["git", "pull"], cwd=str(cwd),
                 capture_output=True, text=True, timeout=60,
             )
+            if result.returncode == 0:
+                msg = (result.stdout.strip() or "Pull 완료")[:80]
+                self.app.call_from_thread(self.app.notify, msg, timeout=3)
+            else:
+                err = (result.stderr.strip() or result.stdout.strip() or "Pull 실패")
+                self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
         except subprocess.TimeoutExpired:
             self.app.call_from_thread(self.app.notify, "Pull 시간 초과", severity="error")
-            return
         except Exception as exc:
             self.app.call_from_thread(self.app.notify, str(exc), severity="error")
-            return
-
-        if result.returncode == 0:
-            msg = (result.stdout.strip() or "Pull 완료")[:80]
-            self.app.call_from_thread(self.app.notify, msg, timeout=3)
-        else:
-            err = result.stderr.strip() or result.stdout.strip()
-            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
-        self.call_from_thread(self.action_refresh)
+        finally:
+            self.call_from_thread(self.action_refresh)
 
     @work(thread=True)
     def _do_push(self) -> None:
         cwd = self._work_dir()
-        self.app.call_from_thread(self.app.notify, "Push 중...", timeout=2)
         try:
+            self.app.call_from_thread(self.app.notify, "Push 중...", timeout=2)
             _, _, has_upstream = _get_remote_status(cwd)
             if not has_upstream:
                 r = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
@@ -808,19 +810,17 @@ class GitPanel(Container):
             else:
                 cmd = ["git", "push"]
             result = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=60)
+            if result.returncode == 0:
+                self.app.call_from_thread(self.app.notify, "Push 완료", timeout=3)
+            else:
+                err = (result.stderr.strip() or result.stdout.strip() or "Push 실패")
+                self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
         except subprocess.TimeoutExpired:
             self.app.call_from_thread(self.app.notify, "Push 시간 초과", severity="error")
-            return
         except Exception as exc:
             self.app.call_from_thread(self.app.notify, str(exc), severity="error")
-            return
-
-        if result.returncode == 0:
-            self.app.call_from_thread(self.app.notify, "Push 완료", timeout=3)
-        else:
-            err = result.stderr.strip() or result.stdout.strip()
-            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
-        self.call_from_thread(self.action_refresh)
+        finally:
+            self.call_from_thread(self.action_refresh)
 
     # ------------------------------------------------------------------
     # Button handler

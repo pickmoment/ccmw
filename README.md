@@ -20,6 +20,7 @@
 | **git init** | 저장소가 없는 디렉터리에서 즉시 초기화 |
 | **AI 코드 리뷰** | 변경 diff를 Claude에게 전달해 리뷰 리포트 생성 |
 | **세션 관리** | 기존 Claude 세션 목록 조회 및 재개 |
+| **클립보드 이미지 붙여넣기** | `Ctrl+V`로 클립보드 이미지를 PNG 파일로 저장해 경로를 터미널에 붙여넣기 (macOS) |
 | **입력 언어 표시** | 현재 IME 언어(한/EN)를 상태바에 표시 |
 
 ---
@@ -77,8 +78,8 @@ ccmw --version
 | `Space` | 선택 파일 스테이지/언스테이지 |
 | `a` | 모든 파일 스테이지 |
 | `d` | Diff 모드 전환 (Unified ↔ Split) |
-| `p` · **Pull ↓** 버튼 | `git pull` |
-| **Push ↑** 버튼 | `git push` (upstream 없으면 자동으로 `--set-upstream origin <branch>`) |
+| `p` · **Pull ↓ (p)** 버튼 | `git pull` |
+| `u` · **Push ↑ (u)** 버튼 | `git push` (upstream 없으면 자동으로 `--set-upstream origin <branch>`) |
 | `v` · **AI 리뷰** 버튼 | 전체 변경 diff를 Claude에 전달해 리뷰 리포트 생성 |
 | `b` | 브랜치 뷰로 전환 |
 | `i` · **git init** 버튼 | `git init` — 저장소가 없을 때만 표시 |

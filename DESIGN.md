@@ -121,6 +121,20 @@ GitPanel.CloseRequested / SessionPanel.CloseRequested
 - **렌더링**: `pyte` 셀의 fg/bg/bold/italic/underscore/reverse 속성 → `@lru_cache` 캐싱된 Rich 스타일 문자열로 변환
 - **CSI 필터**: Kitty keyboard protocol 등 `pyte`가 처리 못 하는 시퀀스를 정규식으로 제거
 - **윈도우 크기**: `TIOCSWINSZ` ioctl로 PTY에 터미널 크기 전달, `on_resize` 시 동기화
+- **클립보드 이미지 붙여넣기**: `Ctrl+V` 입력 시 `_save_clipboard_image()`로 클립보드 이미지를 PNG 파일로 저장하고 경로 문자열을 PTY에 전송
+
+**클립보드 이미지 붙여넣기 흐름**
+
+```
+Ctrl+V 입력 (on_key / on_paste)
+  └─→ _save_clipboard_image()
+        ├─ osascript: clipboard → PNG 직접 저장 (PNGf 타입)
+        └─ 실패 시 osascript: clipboard → TIFF → sips로 PNG 변환
+  └─→ 성공: _write_to_pty(path.encode()) + notify(path)
+  └─→ 실패: 일반 텍스트 붙여넣기 흐름으로 fall-through
+```
+
+`_write_to_pty(data)`: 스크롤 오프셋 초기화 + `os.write(master_fd, data)` 수행. 기존 여러 곳에 흩어진 `os.write` 호출을 단일 헬퍼로 통합.
 
 **스크롤 구현**
 
@@ -204,7 +218,9 @@ GitPanel (35행 고정)
     │   │   ├── #git-file-list (ListView, 1fr)
     │   │   ├── #git-commit-msg (Input)
     │   │   ├── #git-stage-row  [스테이지 (a)] [커밋]
-    │   │   ├── #git-remote-row [Pull ↓ (p)] [Push ↑]
+    │   │   ├── #git-remote-row (Vertical, 6행)
+    │   │   │   ├── [Pull ↓ (p)]
+    │   │   │   └── [Push ↑ (u)]
     │   │   ├── #btn-review     [AI 리뷰 (v)]
     │   │   └── #btn-git-init   [git init (i)]  ← 저장소 없을 때만 표시
     │   └── #branches-view (브랜치 뷰, 기본 숨김)
@@ -255,6 +271,7 @@ class _Branch:
 | `a` | 모든 파일 스테이지 | 변경사항 |
 | `d` | Diff 모드 전환 (Unified ↔ Split) | 변경사항 |
 | `p` | Pull | 변경사항 |
+| `u` | Push | 변경사항 |
 | `v` | AI 코드 리뷰 | 변경사항 |
 | `b` | 변경사항 ↔ 브랜치 뷰 전환 | 공통 |
 | `n` | 새 브랜치 이름 입력창 포커스 | 브랜치 |
@@ -432,7 +449,7 @@ asyncio 이벤트 루프 (Textual 내장)
    ├─ GitPanel._load_diff()                (git diff)
    ├─ GitPanel._load_branches()            (git branch -a)
    ├─ GitPanel._do_pull()                  (git pull, 60s timeout)
-   ├─ GitPanel._do_push()                  (git push [--set-upstream])
+   ├─ GitPanel._do_push()                  (git push [--set-upstream], 60s timeout)
    ├─ GitPanel._do_checkout()              (git checkout [-b --track])
    ├─ GitPanel._do_create_branch()         (git checkout -b)
    ├─ GitPanel._do_delete_branch()         (git branch -d)
@@ -440,6 +457,9 @@ asyncio 이벤트 루프 (Textual 내장)
    ├─ ClaudeReviewModal._start_review()    (claude -p 스트리밍)
    └─ ClaudeReviewModal._start_follow_up() (claude -p --resume)
        └─ app.call_from_thread() → 메인 스레드 UI 업데이트
+
+동기 헬퍼 (메인 스레드 또는 워커에서 호출):
+   └─ TerminalPanel._save_clipboard_image() (osascript + sips, 동기, 최대 15s)
 ```
 
 ---
