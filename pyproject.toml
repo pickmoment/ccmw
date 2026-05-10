@@ -6,6 +6,7 @@ dependencies = [
     "textual>=0.60",
     "rich>=13",
     "pyte>=0.8.2",
+    "pillow>=10",
 ]
 
 [project.scripts]
