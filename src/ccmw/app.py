@@ -26,21 +26,22 @@ class NewTabPicker(ModalScreen):
         align: center middle;
     }
     NewTabPicker > Vertical {
-        width: 28;
+        width: 36;
         height: auto;
         padding: 1 2;
         background: $surface;
-        border: thick $accent;
+        border: thick $primary;
     }
-    NewTabPicker Label {
+    NewTabPicker #picker-title {
         width: 1fr;
         text-align: center;
         margin-bottom: 1;
         text-style: bold;
+        color: $primary;
     }
     NewTabPicker Button {
         width: 1fr;
-        margin-top: 0;
+        margin-top: 1;
     }
     """
 
@@ -50,9 +51,9 @@ class NewTabPicker(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label("새 탭 열기")
+            yield Label("새 탭 열기", id="picker-title")
             yield Button("Claude", id="btn-claude", variant="primary")
-            yield Button("Shell", id="btn-shell")
+            yield Button("Shell", id="btn-shell", variant="default")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id)
@@ -100,7 +101,7 @@ class CCMWApp(App):
                 with Horizontal(id="status-bar"):
                     yield Static("", id="current-dir")
                     yield Static("", id="git-branch")
-                    yield Static("EN", id="input-lang")
+                    yield Static("EN ", id="input-lang")
                 yield FileBrowser(str(self._start_cwd), id="file-browser")
             yield FileViewer(id="file-viewer")
             yield MultiTerminalPanel(id="terminal-panel")
@@ -109,6 +110,7 @@ class CCMWApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.sub_title = "Multi-Window Terminal"
         self.call_after_refresh(self._open_claude_in, self._start_cwd)
         self._update_current_dir(self._start_cwd)
         self._poll_input_lang()
@@ -129,7 +131,8 @@ class CCMWApp(App):
 
     def _update_input_lang_widget(self, lang: str) -> None:
         widget = self.query_one("#input-lang", Static)
-        widget.update(lang)
+        display = "한 " if lang == "한" else "EN "
+        widget.update(display)
         widget.remove_class("lang-ko", "lang-en")
         widget.add_class("lang-ko" if lang == "한" else "lang-en")
 

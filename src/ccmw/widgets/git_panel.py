@@ -27,15 +27,23 @@ class ConfirmModal(ModalScreen[bool]):
         align: center middle;
     }
     #confirm-dialog {
-        width: 64;
+        width: 70;
         height: auto;
         padding: 1 2;
         background: $surface;
-        border: solid $error;
+        border: thick $error;
+    }
+    #confirm-title {
+        width: 100%;
+        text-align: center;
+        color: $error;
+        text-style: bold;
+        margin-bottom: 1;
     }
     #confirm-message {
         width: 100%;
         height: auto;
+        padding: 0 1;
         margin-bottom: 1;
         text-align: center;
         color: $text;
@@ -47,7 +55,7 @@ class ConfirmModal(ModalScreen[bool]):
     }
     #confirm-buttons Button {
         margin: 0 1;
-        min-width: 14;
+        min-width: 16;
     }
     """
 
@@ -63,6 +71,7 @@ class ConfirmModal(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-dialog"):
+            yield Label("⚠ 확인 필요", id="confirm-title")
             yield Label(self._message, id="confirm-message")
             with Horizontal(id="confirm-buttons"):
                 yield Button("취소 (n/ESC)", id="btn-cancel-confirm")
@@ -354,14 +363,14 @@ class GitPanel(Container):
                     yield ListView(id="git-file-list")
                     yield Input(placeholder="커밋 메시지...", id="git-commit-msg")
                     with Horizontal(id="git-stage-row"):
-                        yield Button("스테이지 (a)", id="btn-stage-all")
+                        yield Button("+ 스테이지", id="btn-stage-all")
                         yield Button("커밋", id="btn-commit", variant="primary")
-                        yield Button("복원 (x)", id="btn-restore", variant="error")
-                    with Vertical(id="git-remote-row"):
-                        yield Button("Pull ↓ (p)", id="btn-pull")
-                        yield Button("Push ↑ (u)", id="btn-push", variant="warning")
-                    yield Button("AI 리뷰 (v)", id="btn-review", variant="success")
-                    yield Button("git init (i)", id="btn-git-init", variant="warning", classes="hidden")
+                        yield Button("↺ 복원", id="btn-restore", variant="error")
+                    with Horizontal(id="git-remote-row"):
+                        yield Button("↓ Pull", id="btn-pull", variant="primary")
+                        yield Button("↑ Push", id="btn-push", variant="warning")
+                    yield Button("✦ AI 리뷰", id="btn-review", variant="success")
+                    yield Button("⊕ git init", id="btn-git-init", variant="warning", classes="hidden")
                 # 브랜치 뷰 (기본 숨김)
                 with Vertical(id="branches-view", classes="hidden"):
                     yield ListView(id="branch-list")
@@ -378,7 +387,7 @@ class GitPanel(Container):
                         yield Button("Mixed", id="btn-reset-mixed", variant="warning")
                         yield Button("Hard!", id="btn-reset-hard", variant="error")
                         yield Button("Revert", id="btn-revert", variant="primary")
-                        yield Button("AI 리뷰 (v)", id="btn-review-commit", variant="success")
+                        yield Button("✦ AI 리뷰", id="btn-review-commit", variant="success")
             with Vertical(id="git-diff-pane"):
                 yield Label("", id="git-diff-title")
                 yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False, classes="hidden")

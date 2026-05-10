@@ -16,9 +16,9 @@ from ccmw.session_manager import Session, SessionManager
 
 
 _STATUS_ICON = {
-    "busy": "● ",
-    "idle": "○ ",
-    "stopped": "· ",
+    "busy":    "[green]●[/green]",
+    "idle":    "[yellow]○[/yellow]",
+    "stopped": "[bright_black]·[/bright_black]",
 }
 
 
@@ -53,7 +53,7 @@ class SessionPanel(Container):
         self._sessions: list[Session] = []
 
     def compose(self) -> ComposeResult:
-        yield Label("sessions", id="session-list-title")
+        yield Label("Claude 세션", id="session-list-title")
         yield ListView(id="session-list-view")
 
     def on_mount(self) -> None:
@@ -132,11 +132,11 @@ class SessionPanel(Container):
 # ------------------------------------------------------------------
 
 def _format_session(s: Session) -> str:
-    icon = _STATUS_ICON.get(s.status, "· ")
-    title = s.ai_title or s.last_prompt or s.session_id[:8]
+    icon = _STATUS_ICON.get(s.status, "[bright_black]·[/bright_black]")
+    title = s.ai_title or s.last_prompt or s.session_id[:7]
     age = _time_ago(s.timestamp)
-    short_id = s.session_id[:8]
-    return f"{icon}[{short_id}] {title}  ({age})"
+    short_id = s.session_id[:7]
+    return f"{icon} {title}  [dim]{age} · {short_id}[/dim]"
 
 
 def _time_ago(iso: str) -> str:

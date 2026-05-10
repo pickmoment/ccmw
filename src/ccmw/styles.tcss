@@ -23,6 +23,19 @@ Screen {
 }
 
 /* -------------------------------------------------------------------------
+   공통 패널 타이틀
+   ------------------------------------------------------------------------- */
+
+.panel-title {
+    height: 1;
+    background: $boost;
+    color: $primary;
+    text-style: bold;
+    padding: 0 2;
+    width: 100%;
+}
+
+/* -------------------------------------------------------------------------
    FileBrowser pane — Vertical wrapper (width + border 소유)
    ------------------------------------------------------------------------- */
 
@@ -31,13 +44,11 @@ Screen {
     height: 100%;
     border: solid $surface-lighten-2;
     background: $surface;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
-    scrollbar-color-active: $accent-lighten-1;
+    scrollbar-color: $accent 50%;
 }
 
 #file-browser-pane:focus-within {
-    border: solid $accent;
+    border: thick $primary;
 }
 
 /* -------------------------------------------------------------------------
@@ -47,7 +58,7 @@ Screen {
 #status-bar {
     width: 100%;
     height: 1;
-    background: $surface-lighten-1;
+    background: $boost;
 }
 
 #current-dir {
@@ -69,7 +80,8 @@ Screen {
 }
 
 #git-branch.git-dirty {
-    color: yellow;
+    color: $warning;
+    text-style: bold;
 }
 
 #git-branch.git-clean {
@@ -77,19 +89,19 @@ Screen {
 }
 
 #input-lang {
-    width: 4;
+    width: 5;
     height: 1;
     content-align: center middle;
     text-style: bold;
 }
 
 #input-lang.lang-ko {
-    background: #c0392b;
-    color: #ffffff;
+    background: $error;
+    color: $text;
 }
 
 #input-lang.lang-en {
-    background: $accent;
+    background: $primary;
     color: $background;
 }
 
@@ -131,9 +143,7 @@ FileBrowser .tree--highlight {
     height: 100%;
     border: solid $surface-lighten-2;
     background: $surface-darken-1;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
-    scrollbar-color-active: $accent-lighten-1;
+    scrollbar-color: $accent 50%;
 }
 
 #main-container.viewer-open #file-viewer {
@@ -145,7 +155,7 @@ FileBrowser .tree--highlight {
 }
 
 #file-viewer:focus-within {
-    border: solid $accent;
+    border: thick $primary;
 }
 
 FileViewer {
@@ -157,9 +167,9 @@ FileViewer {
 FileViewer > #viewer-title {
     width: 100%;
     height: 1;
-    background: $surface-lighten-1;
-    color: $text-muted;
-    padding: 0 1;
+    background: $boost;
+    color: $primary;
+    padding: 0 2;
     text-style: bold;
 }
 
@@ -189,13 +199,11 @@ FileViewer.word-wrap-on > #viewer-scroll > #file-content {
     height: 100%;
     border: solid $surface-lighten-2;
     background: $surface-darken-1;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
-    scrollbar-color-active: $accent-lighten-1;
+    scrollbar-color: $accent 50%;
 }
 
 #terminal-panel:focus-within {
-    border: solid $accent;
+    border: thick $primary;
 }
 
 MultiTerminalPanel {
@@ -209,6 +217,19 @@ MultiTerminalPanel TabbedContent {
 MultiTerminalPanel TabPane {
     padding: 0;
     background: $surface-darken-1;
+}
+
+MultiTerminalPanel Tabs {
+    background: $boost;
+}
+
+MultiTerminalPanel Tab {
+    padding: 0 2;
+}
+
+MultiTerminalPanel Tab.-active {
+    color: $primary;
+    text-style: bold;
 }
 
 TerminalPanel {
@@ -238,56 +259,56 @@ TerminalPanel > #terminal-output {
 }
 
 #session-panel:focus-within {
-    border: solid $accent;
+    border: thick $primary;
 }
 
 #session-list-title {
-    background: $surface-lighten-1;
-    color: $accent;
+    background: $boost;
+    color: $primary;
     text-style: bold;
-    padding: 0 1;
+    padding: 0 2;
     width: 100%;
+    height: 1;
 }
 
 #session-list-view {
     height: 1fr;
     background: $surface;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
+    scrollbar-color: $accent 50%;
 }
 
 #session-list-view > ListItem {
-    background: $surface;
-    padding: 0 1;
-    border-left: thick $surface;
+    height: 1;
+    padding: 0 2;
+    border-left: thick transparent;
 }
 
 #session-list-view > ListItem:hover {
-    background: $surface-lighten-1;
+    background: $boost;
 }
 
 #session-list-view > ListItem.--highlight {
-    background: $surface-lighten-2;
+    background: $boost;
     color: $text;
     text-style: bold;
-    border-left: thick $surface-lighten-2;
+    border-left: thick $accent;
 }
 
 #session-list-view > ListItem.--highlight > Label {
-    background: $surface-lighten-2;
+    background: $boost;
     color: $text;
     text-style: bold;
     width: 100%;
 }
 
 #session-list-view:focus > ListItem.--highlight {
-    background: $accent;
-    border-left: thick $accent-lighten-2;
+    background: $accent 30%;
+    border-left: thick $primary;
 }
 
 #session-list-view:focus > ListItem.--highlight > Label {
-    background: $accent;
-    color: $background;
+    background: $accent 30%;
+    color: $text;
     text-style: bold;
     width: 100%;
 }
@@ -306,14 +327,14 @@ TerminalPanel > #terminal-output {
 }
 
 #git-panel:focus-within {
-    border: solid $accent;
+    border: thick $primary;
 }
 
 #git-panel-title {
-    background: $surface-lighten-1;
-    color: $accent;
+    background: $boost;
+    color: $primary;
     text-style: bold;
-    padding: 0 1;
+    padding: 0 2;
     width: 100%;
     height: 1;
 }
@@ -321,6 +342,7 @@ TerminalPanel > #terminal-output {
 #git-panel-body {
     width: 100%;
     height: 1fr;
+    padding: 1 1 0 1;
 }
 
 #git-panel-left {
@@ -329,31 +351,44 @@ TerminalPanel > #terminal-output {
     border-right: solid $surface-lighten-2;
 }
 
-#git-file-list {
+/* -------------------------------------------------------------------------
+   ListView 공통 규칙 — git-file-list, branch-list, commit-list
+   ------------------------------------------------------------------------- */
+
+#git-file-list,
+#branch-list,
+#commit-list {
     height: 1fr;
     background: $surface;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
+    scrollbar-color: $accent 50%;
 }
 
-#git-file-list > ListItem {
-    background: $surface;
+#git-file-list > ListItem,
+#branch-list > ListItem,
+#commit-list > ListItem {
     padding: 0 1;
-    border-left: thick $surface;
+    border-left: thick transparent;
+    height: 1;
 }
 
-#git-file-list > ListItem:hover {
-    background: $surface-lighten-1;
+#git-file-list > ListItem:hover,
+#branch-list > ListItem:hover,
+#commit-list > ListItem:hover {
+    background: $boost;
 }
 
-#git-file-list > ListItem.--highlight {
-    background: $surface-lighten-2;
-    border-left: thick $surface-lighten-2;
-}
-
-#git-file-list:focus > ListItem.--highlight {
-    background: $accent-darken-2;
+#git-file-list > ListItem.--highlight,
+#branch-list > ListItem.--highlight,
+#commit-list > ListItem.--highlight {
+    background: $boost;
     border-left: thick $accent;
+}
+
+#git-file-list:focus > ListItem.--highlight,
+#branch-list:focus > ListItem.--highlight,
+#commit-list:focus > ListItem.--highlight {
+    background: $accent 30%;
+    border-left: thick $primary;
 }
 
 /* -------------------------------------------------------------------------
@@ -373,35 +408,8 @@ TerminalPanel > #terminal-output {
 }
 
 /* -------------------------------------------------------------------------
-   브랜치 목록
+   브랜치 입력 / 버튼
    ------------------------------------------------------------------------- */
-
-#branch-list {
-    height: 1fr;
-    background: $surface;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
-}
-
-#branch-list > ListItem {
-    background: $surface;
-    padding: 0 1;
-    border-left: thick $surface;
-}
-
-#branch-list > ListItem:hover {
-    background: $surface-lighten-1;
-}
-
-#branch-list > ListItem.--highlight {
-    background: $surface-lighten-2;
-    border-left: thick $surface-lighten-2;
-}
-
-#branch-list:focus > ListItem.--highlight {
-    background: $accent-darken-2;
-    border-left: thick $accent;
-}
 
 #branch-name-input {
     width: 100%;
@@ -409,6 +417,10 @@ TerminalPanel > #terminal-output {
     margin: 0;
     background: $surface-darken-1;
     border: tall $surface-lighten-2;
+}
+
+#branch-name-input:focus-within {
+    border: tall $primary;
 }
 
 #git-branch-buttons {
@@ -422,6 +434,10 @@ TerminalPanel > #terminal-output {
     width: 1fr;
 }
 
+#git-branch-buttons Button:first-of-type {
+    margin: 0;
+}
+
 /* -------------------------------------------------------------------------
    커밋 입력 / 버튼 행
    ------------------------------------------------------------------------- */
@@ -432,6 +448,10 @@ TerminalPanel > #terminal-output {
     margin: 0;
     background: $surface-darken-1;
     border: tall $surface-lighten-2;
+}
+
+#git-commit-msg:focus-within {
+    border: tall $primary;
 }
 
 #git-stage-row {
@@ -448,34 +468,36 @@ TerminalPanel > #terminal-output {
 
 #git-remote-row {
     width: 100%;
-    height: 6;
+    height: 3;
+    margin: 1 0 0 0;
     padding: 0 1;
-    layout: vertical;
+    layout: horizontal;
 }
 
-#btn-pull {
-    width: 100%;
-    height: 3;
-    margin: 0;
+#git-remote-row Button {
+    width: 1fr;
+    margin: 0 0 0 1;
 }
 
-#btn-push {
-    width: 100%;
-    height: 3;
+#git-remote-row Button:first-of-type {
     margin: 0;
 }
 
 #btn-review {
     width: 100%;
     height: 3;
-    margin: 0;
+    margin: 1 0 0 0;
 }
 
 #btn-git-init {
     width: 100%;
     height: 3;
-    margin: 0;
+    margin: 1 0 0 0;
 }
+
+/* -------------------------------------------------------------------------
+   Diff 패널
+   ------------------------------------------------------------------------- */
 
 #git-diff-pane {
     width: 1fr;
@@ -485,9 +507,9 @@ TerminalPanel > #terminal-output {
 #git-diff-title {
     width: 100%;
     height: 1;
-    background: $surface-lighten-1;
-    color: $text-muted;
-    padding: 0 1;
+    background: $boost;
+    color: $primary;
+    padding: 0 2;
     text-style: bold;
 }
 
@@ -496,8 +518,7 @@ TerminalPanel > #terminal-output {
     height: 1fr;
     background: $surface-darken-1;
     padding: 0 1;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
+    scrollbar-color: $accent 50%;
 }
 
 #git-diff-split {
@@ -519,8 +540,7 @@ TerminalPanel > #terminal-output {
     height: 100%;
     background: $surface-darken-1;
     padding: 0 1;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
+    scrollbar-color: $accent 50%;
 }
 
 /* -------------------------------------------------------------------------
@@ -533,33 +553,6 @@ TerminalPanel > #terminal-output {
     layout: vertical;
 }
 
-#commit-list {
-    height: 1fr;
-    background: $surface;
-    scrollbar-color: $accent-darken-2;
-    scrollbar-color-hover: $accent;
-}
-
-#commit-list > ListItem {
-    background: $surface;
-    padding: 0 1;
-    border-left: thick $surface;
-}
-
-#commit-list > ListItem:hover {
-    background: $surface-lighten-1;
-}
-
-#commit-list > ListItem.--highlight {
-    background: $surface-lighten-2;
-    border-left: thick $surface-lighten-2;
-}
-
-#commit-list:focus > ListItem.--highlight {
-    background: $accent-darken-2;
-    border-left: thick $accent;
-}
-
 #git-history-buttons {
     width: 100%;
     height: 3;
@@ -570,6 +563,10 @@ TerminalPanel > #terminal-output {
     margin: 0 0 0 1;
     width: 1fr;
     min-width: 0;
+}
+
+#git-history-buttons Button:first-of-type {
+    margin: 0;
 }
 
 /* -------------------------------------------------------------------------
@@ -585,22 +582,22 @@ TerminalPanel > #terminal-output {
    ------------------------------------------------------------------------- */
 
 Header {
-    background: $surface-lighten-1;
-    color: $accent;
+    background: $boost;
+    color: $primary;
     text-style: bold;
     dock: top;
     height: 1;
 }
 
 Footer {
-    background: $surface-lighten-1;
+    background: $boost;
     color: $text-muted;
     dock: bottom;
     height: 1;
 }
 
 Footer > .footer--key {
-    color: $accent;
+    color: $primary;
     text-style: bold;
     background: $surface-darken-1;
 }

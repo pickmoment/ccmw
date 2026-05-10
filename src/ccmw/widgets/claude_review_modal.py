@@ -31,15 +31,15 @@ class ClaudeReviewModal(ModalScreen):
         width: 90%;
         height: 90%;
         background: $surface;
-        border: thick $accent;
+        border: thick $primary;
         padding: 0;
     }
     #review-title {
         width: 100%;
         height: 1;
-        background: $surface-lighten-1;
-        color: $accent;
-        padding: 0 1;
+        background: $boost;
+        color: $primary;
+        padding: 0 2;
         text-style: bold;
     }
     #review-log {
@@ -47,13 +47,14 @@ class ClaudeReviewModal(ModalScreen):
         height: 1fr;
         background: $surface-darken-1;
         padding: 0 1;
+        scrollbar-color: $accent 50%;
     }
     #review-status {
         width: 100%;
         height: 1;
-        background: $surface-lighten-1;
+        background: $boost;
         color: $text-muted;
-        padding: 0 1;
+        padding: 0 2;
         text-align: center;
     }
     #review-input {
@@ -62,6 +63,9 @@ class ClaudeReviewModal(ModalScreen):
         background: $surface-darken-1;
         border: tall $surface-lighten-2;
         margin: 0;
+    }
+    #review-input:focus {
+        border: tall $primary;
     }
     """
 
@@ -78,7 +82,7 @@ class ClaudeReviewModal(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Label(
-                f"AI 리뷰: {self._title}  [ESC: 닫기]",
+                f"✦ AI 리뷰: {self._title}  [ESC: 닫기]",
                 id="review-title",
             )
             yield RichLog(

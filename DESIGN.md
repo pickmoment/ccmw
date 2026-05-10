@@ -187,15 +187,18 @@ refresh_git_status()
 
 ### 4.5 FileViewer (`widgets/file_viewer.py`)
 
-**역할**: 선택한 파일을 구문 강조와 함께 표시하는 읽기 전용 패널.
+**역할**: 선택한 파일을 구문 강조 또는 이미지 미리보기와 함께 표시하는 읽기 전용 패널.
 
 **파일 로드 가드**
 
 | 조건 | 처리 |
 |------|------|
-| 파일 크기 > 1MB | 에러 메시지 표시 |
+| 이미지 파일 (png/jpg/gif/webp/bmp 등) | Pillow로 렌더링 (우선 처리) |
+| 파일 크기 > 1MB (텍스트) / 10MB (이미지) | 에러 메시지 표시 |
 | 바이너리 (첫 1024바이트에 null) | "바이너리 파일" 메시지 |
 | 인코딩 실패 | UTF-8 → Latin-1 순으로 `errors='replace'` |
+
+**이미지 렌더링**: Pillow(`PIL.Image`)로 이미지를 로드하고 뷰어 크기에 맞게 리사이즈한 뒤, 하프블록 문자(`▄`)를 사용해 터미널에 표시한다. 픽셀 두 행을 한 문자로 압축: 상단 픽셀은 배경색(`bgcolor`), 하단 픽셀은 전경색(`color`)으로 Rich `Style`을 설정한다.
 
 **언어 감지**: 파일 확장자 매핑 테이블 (50+ 언어), `Dockerfile`/`Containerfile`은 이름으로 감지.
 
@@ -213,21 +216,25 @@ refresh_git_status()
 GitPanel (35행 고정)
 ├── #git-panel-title (1행) — 모드·원격 상태 표시
 └── #git-panel-body (Horizontal)
-    ├── #git-panel-left (36열 고정)
+    ├── #git-panel-left (38열 고정)
     │   ├── #changes-view (변경사항 뷰, 기본 표시)
     │   │   ├── #git-file-list (ListView, 1fr)
     │   │   ├── #git-commit-msg (Input)
-    │   │   ├── #git-stage-row  [스테이지 (a)] [커밋]
-    │   │   ├── #git-remote-row (Vertical, 6행)
-    │   │   │   ├── [Pull ↓ (p)]
-    │   │   │   └── [Push ↑ (u)]
-    │   │   ├── #btn-review     [AI 리뷰 (v)]
-    │   │   └── #btn-git-init   [git init (i)]  ← 저장소 없을 때만 표시
-    │   └── #branches-view (브랜치 뷰, 기본 숨김)
-    │       ├── #branch-list (ListView, 1fr)
-    │       ├── #branch-name-input (Input)
-    │       └── #git-branch-buttons [체크아웃] [생성] [삭제]
+    │   │   ├── #git-stage-row  [+ 스테이지] [커밋]  [↺ 복원]
+    │   │   ├── #git-remote-row (Horizontal, 3행)
+    │   │   │   ├── [↓ Pull]   (variant=primary, 1fr)
+    │   │   │   └── [↑ Push]   (variant=warning, 1fr)
+    │   │   ├── #btn-review     [✦ AI 리뷰]  (variant=success)
+    │   │   └── #btn-git-init   [⊕ git init] ← 저장소 없을 때만 표시
+    │   ├── #branches-view (브랜치 뷰, 기본 숨김)
+    │   │   ├── #branch-list (ListView, 1fr)
+    │   │   ├── #branch-name-input (Input)
+    │   │   └── #git-branch-buttons [체크아웃] [생성] [삭제]
+    │   └── #history-view (히스토리 뷰, 기본 숨김)
+    │       ├── #commit-list (ListView, 1fr)
+    │       └── #git-history-buttons [Soft] [Mixed] [Hard!] [Revert] [✦ AI 리뷰]
     └── #git-diff-pane (1fr)
+        ├── #git-diff-title (1행) — 선택 파일명 또는 커밋 해시 표시
         ├── unified 모드: RichLog
         └── split 모드: SyncedRichLog(left) + SyncedRichLog(right)
 ```
@@ -246,6 +253,13 @@ class _Branch:
     name: str        # 브랜치 이름 (원격은 "origin/main" 형태)
     is_current: bool # 현재 체크아웃된 브랜치
     is_remote: bool  # 원격 추적 브랜치 여부
+
+@dataclass
+class _Commit:
+    hash: str        # 7자리 단축 해시
+    subject: str     # 커밋 메시지 제목
+    author: str      # 저자
+    date: str        # 날짜 (상대 시간, 예: "2 days ago")
 ```
 
 #### 4.6.3 GitPanel 상태
@@ -261,6 +275,8 @@ class _Branch:
 | `_has_upstream` | `bool` | upstream 브랜치 설정 여부 |
 | `_branch_view` | `bool` | 브랜치 뷰 활성화 여부 |
 | `_branches` | `list[_Branch]` | 로컬 + 원격 브랜치 목록 |
+| `_history_view` | `bool` | 히스토리 뷰 활성화 여부 |
+| `_commits` | `list[_Commit]` | 최근 커밋 목록 |
 
 #### 4.6.4 키 바인딩
 
@@ -269,19 +285,21 @@ class _Branch:
 | `r` | 상태 새로고침 | 공통 |
 | `space` | 선택 파일 스테이지/언스테이지 | 변경사항 |
 | `a` | 모든 파일 스테이지 | 변경사항 |
+| `x` | 선택 파일 변경 되돌리기 | 변경사항 |
 | `d` | Diff 모드 전환 (Unified ↔ Split) | 변경사항 |
 | `p` | Pull | 변경사항 |
 | `u` | Push | 변경사항 |
-| `v` | AI 코드 리뷰 | 변경사항 |
+| `v` | AI 코드 리뷰 | 변경사항·히스토리 |
 | `b` | 변경사항 ↔ 브랜치 뷰 전환 | 공통 |
+| `h` | 변경사항 ↔ 히스토리 뷰 전환 | 공통 |
 | `n` | 새 브랜치 이름 입력창 포커스 | 브랜치 |
 | `Enter` | 선택 브랜치 체크아웃 | 브랜치 |
 | `Ctrl+D` | 선택 로컬 브랜치 삭제 | 브랜치 |
 | `i` | git init (저장소 없을 때만 동작) | 공통 |
-| `Esc` | 변경사항 뷰로 돌아가기 | 브랜치 |
+| `Esc` | 변경사항 뷰로 돌아가기 | 브랜치·히스토리 |
 | `Esc` | 패널 닫기 | 변경사항 |
 
-브랜치 뷰 활성 중에는 `space`, `a`, `d`, `v`가 무시된다 (가드 처리).
+브랜치/히스토리 뷰 활성 중에는 `space`, `a`, `d`, `v`(히스토리 제외)가 무시된다 (가드 처리).
 
 #### 4.6.5 Git 헬퍼 함수
 
@@ -291,6 +309,8 @@ class _Branch:
 | `_get_status(cwd)` | `git status --porcelain` | `list[_Change]` |
 | `_get_remote_status(cwd)` | `git rev-list --count --left-right HEAD...@{u}` | `(ahead, behind, has_upstream)` |
 | `_list_branches(cwd)` | `git branch --format=...` + `git branch -r` | `list[_Branch]` |
+| `_list_commits(cwd)` | `git log --format=...` | `list[_Commit]` |
+| `_get_commit_diff(cwd, hash)` | `git show <hash>` | `str` (diff 텍스트) |
 
 #### 4.6.6 워커 목록
 
@@ -305,6 +325,10 @@ class _Branch:
 | `_do_create_branch(name)` | `git checkout -b <name>` | 생성 후 즉시 전환 |
 | `_do_delete_branch(name)` | `git branch -d <name>` | 안전 삭제 (merge 안 된 브랜치 보호) |
 | `_do_init()` | `git init` | 완료 후 `_root` 재탐지 및 전체 새로고침 |
+| `_load_commits()` | `_list_commits()` | 히스토리 뷰 진입·`action_refresh` 시 |
+| `_load_commit_diff(commit)` | `_get_commit_diff()` | 커밋 목록 하이라이트 변경마다 |
+| `_do_reset(mode)` | `git reset --soft\|--mixed\|--hard <hash>` | soft/mixed/hard 리셋, hard는 ConfirmModal 경유 |
+| `_do_revert(hash)` | `git revert --no-commit <hash>` | 리버트 커밋 생성 |
 
 모든 워커는 `@work(thread=True)`로 실행되며, UI 업데이트는 `app.call_from_thread()`를 통해 메인 스레드에서 처리한다.
 
@@ -330,12 +354,21 @@ b 키
         #branches-view.add_class("hidden")
         #changes-view.remove_class("hidden")
 
+h 키
+  ├── 변경사항 뷰 → 히스토리 뷰
+  │     #changes-view.add_class("hidden")
+  │     #history-view.remove_class("hidden")
+  │     _load_commits()  (worker)
+  └── 히스토리 뷰 → 변경사항 뷰
+        #history-view.add_class("hidden")
+        #changes-view.remove_class("hidden")
+
 ESC 키
-  ├── 브랜치 뷰 활성 → b 키와 동일하게 변경사항 뷰로 복귀
+  ├── 브랜치/히스토리 뷰 활성 → 변경사항 뷰로 복귀
   └── 변경사항 뷰 활성 → 패널 닫기 (CloseRequested 발행)
 ```
 
-이렇게 하면 ESC를 연속으로 누르는 직관적인 방법으로 브랜치 뷰 → 변경사항 뷰 → 패널 닫기 흐름을 따를 수 있다.
+ESC를 연속으로 누르면 서브 뷰 → 변경사항 뷰 → 패널 닫기 순서로 자연스럽게 빠져나올 수 있다.
 
 #### 4.6.9 git init 흐름
 
@@ -352,7 +385,40 @@ i 키 또는 버튼 클릭
       실패 → 에러 토스트
 ```
 
-#### 4.6.10 SyncedRichLog
+#### 4.6.10 히스토리 뷰 흐름
+
+```
+h 키 → _load_commits() worker
+  └─→ git log --format="%h|%s|%an|%ar" -50
+  └─→ _commits 목록 갱신 + #commit-list ListView 업데이트
+
+커밋 선택 (ListView 하이라이트 변경)
+  └─→ _load_commit_diff() worker
+        git show <hash> --stat + 컬러 diff
+        → #git-diff-unified / split 패널 렌더
+
+[Soft] / [Mixed] 버튼
+  └─→ _do_reset("soft"/"mixed") worker
+        git reset --soft|--mixed <hash>
+        성공 → action_refresh() 호출
+
+[Hard!] 버튼
+  └─→ ConfirmModal 표시 ("⚠ 확인 필요" 타이틀)
+      확인 → _do_reset("hard") worker
+               git reset --hard <hash>
+               성공 → action_refresh() 호출
+      취소 → 아무것도 안 함
+
+[Revert] 버튼
+  └─→ _do_revert() worker
+        git revert --no-commit <hash>
+        성공 → action_refresh() 호출
+
+[✦ AI 리뷰] 버튼
+  └─→ 선택 커밋의 git show diff를 ClaudeReviewModal에 전달
+```
+
+#### 4.6.11 SyncedRichLog
 
 `RichLog`를 상속. `watch_scroll_y` / `watch_scroll_x` 반응형 속성으로 split 뷰의 좌우 패널 스크롤을 항상 동기화한다.
 
@@ -430,7 +496,7 @@ stdout 줄 단위 읽기 (proc.stdout 이터레이션)
 - **전역 바인딩**: `CCMWApp.BINDINGS` — 어느 포커스에서도 동작
 - **패널 전용 바인딩**: 각 패널 `BINDINGS` (`priority=True`) — 패널 포커스 시 전역보다 우선
 - **충돌 해결**: `r`은 전역(새로고침)과 GitPanel(새로고침) 모두 정의되지만 GitPanel 포커스 시 `priority=True`로 패널이 먼저 처리
-- **패널 내 뷰 전환**: `b` 키로 변경사항 뷰 ↔ 브랜치 뷰를 전환할 때 새 Screen을 push하지 않고 `#changes-view` / `#branches-view`에 CSS `.hidden` 클래스를 추가·제거하는 방식을 사용한다. 이렇게 하면 패널 바깥 컨텍스트(포커스, 상태)가 유지된다.
+- **패널 내 뷰 전환**: `b`/`h` 키로 변경사항 뷰 ↔ 브랜치/히스토리 뷰를 전환할 때 새 Screen을 push하지 않고 `#changes-view` / `#branches-view` / `#history-view`에 CSS `.hidden` 클래스를 추가·제거하는 방식을 사용한다. 이렇게 하면 패널 바깥 컨텍스트(포커스, 상태)가 유지된다.
 
 ---
 
@@ -454,6 +520,10 @@ asyncio 이벤트 루프 (Textual 내장)
    ├─ GitPanel._do_create_branch()         (git checkout -b)
    ├─ GitPanel._do_delete_branch()         (git branch -d)
    ├─ GitPanel._do_init()                  (git init)
+   ├─ GitPanel._load_commits()             (git log)
+   ├─ GitPanel._load_commit_diff()         (git show)
+   ├─ GitPanel._do_reset()                 (git reset --soft|--mixed|--hard)
+   ├─ GitPanel._do_revert()               (git revert --no-commit)
    ├─ ClaudeReviewModal._start_review()    (claude -p 스트리밍)
    └─ ClaudeReviewModal._start_follow_up() (claude -p --resume)
        └─ app.call_from_thread() → 메인 스레드 UI 업데이트
@@ -480,7 +550,13 @@ Textual CSS의 주요 레이아웃 패턴:
 .hidden { display: none; }   /* 클래스 추가/제거로 패널 ON/OFF */
 ```
 
-포커스 하이라이트: `:focus-within` 셀렉터로 활성 패널에 accent 색상 테두리 적용.
+포커스 하이라이트: `:focus-within` 셀렉터로 활성 패널에 `border: thick $primary` 테두리 적용 (비포커스는 `solid $surface-lighten-2`).
+
+**디자인 시스템 원칙** (styles.tcss):
+- Textual 시맨틱 토큰(`$primary`, `$boost`, `$success`, `$warning`, `$error`, `$accent`) 통일 사용 — raw hex/색상명 사용 금지
+- `.panel-title` 공통 클래스: `background: $boost; color: $primary; text-style: bold; padding: 0 2; height: 1`
+- ListView 3종(`#git-file-list`, `#branch-list`, `#commit-list`) 공통 선택자로 스타일 공유
+- 버튼 variant: `primary`(주요 액션), `warning`(주의 필요), `error`(파괴적 액션), `success`(AI/생성 액션)
 
 ---
 
@@ -514,8 +590,9 @@ src/ccmw/
 | `textual >= 0.60` | TUI 프레임워크 | 필수 |
 | `rich >= 13` | 렌더링, Syntax | 필수 (textual 내장) |
 | `pyte >= 0.8.2` | PTY 스크린 에뮬레이션 | 필수 |
+| `pillow >= 10` | 이미지 파일 렌더링 (FileViewer) | 필수 |
 | `claude` CLI | 터미널 세션, AI 리뷰 | 런타임 필수 |
-| `git` CLI | 상태 조회, diff, 스테이지, 커밋, push/pull, 브랜치 관리, git init | Git 기능에 필수 |
+| `git` CLI | 상태 조회, diff, 스테이지, 커밋, push/pull, 브랜치 관리, 히스토리, git init | Git 기능에 필수 |
 | `pbcopy` / `xclip` | 클립보드 복사 | 선택 (OS 제공) |
 
 ---
@@ -530,6 +607,7 @@ src/ccmw/
 | 원격 브랜치 삭제 | 미지원 | `git push origin --delete <branch>` 추가 |
 | git stash | 미지원 | stash list·pop·drop 기능 추가 |
 | Merge conflict | 미지원 | conflict 파일 표시 및 에디터 연동 |
+| 이미지 뷰어 | 하프블록 해상도 한계 | Kitty Graphics Protocol 지원으로 실제 픽셀 렌더링 |
 | 세션 필터 | 현재 cwd만 표시 | 전체 세션 표시 옵션 추가 |
 | IME 감지 | macOS 전용 | Linux(IBus/fcitx) 지원 확장 가능 |
 | 설정 | 하드코딩 | `~/.config/ccmw/config.toml` 도입 |
