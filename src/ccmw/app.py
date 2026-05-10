@@ -300,7 +300,13 @@ class CCMWApp(App):
             panel.action_refresh()
             self.call_after_refresh(panel.focus_list)
 
-    def action_refresh_sessions(self) -> None:
+    async def action_refresh_sessions(self) -> None:
+        try:
+            fb = self.query_one("#file-browser", FileBrowser)
+            await fb.reload()
+            fb.refresh_git_status()
+        except Exception:
+            pass
         if self._session_panel_visible:
             try:
                 panel = self.query_one("#session-panel", SessionPanel)
