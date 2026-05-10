@@ -340,7 +340,7 @@ class GitPanel(Container):
         elif self._branch_view:
             current = next((b.name for b in self._branches if b.is_current), "")
             branch_info = f" [{current}]" if current else ""
-            title.update(f"브랜치{branch_info}  Enter·체크아웃  n·새 브랜치  Ctrl+D·삭제")
+            title.update(f"브랜치{branch_info}  Enter·체크아웃  n·새 브랜치  Ctrl+D·삭제  b/ESC·뒤로")
         else:
             staged = sum(1 for c in self._changes if c.staged)
             total = len(self._changes)
@@ -496,7 +496,10 @@ class GitPanel(Container):
             self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
 
     def action_close(self) -> None:
-        self.post_message(self.CloseRequested())
+        if self._branch_view:
+            self.action_toggle_branches()
+        else:
+            self.post_message(self.CloseRequested())
 
     # ------------------------------------------------------------------
     # Actions — 브랜치 뷰

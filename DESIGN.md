@@ -11,6 +11,7 @@
 ### 핵심 가치
 - **인터페이스 통합**: 파일 브라우저 + 코드 뷰어 + 터미널 + Git 패널을 한 화면에서 전환 없이 사용
 - **Claude Code 네이티브**: PTY 에뮬레이션을 통해 Claude 세션을 탭으로 직접 내장
+- **Git 전체 워크플로우**: 변경사항 관리·원격 동기화·브랜치 관리·저장소 초기화를 단일 패널에서 제공
 - **AI 코드 리뷰**: Git diff를 Claude에 전달해 리뷰 리포트를 즉시 생성
 
 ---
@@ -260,7 +261,8 @@ class _Branch:
 | `Enter` | 선택 브랜치 체크아웃 | 브랜치 |
 | `Ctrl+D` | 선택 로컬 브랜치 삭제 | 브랜치 |
 | `i` | git init (저장소 없을 때만 동작) | 공통 |
-| `Esc` | 패널 닫기 | 공통 |
+| `Esc` | 변경사항 뷰로 돌아가기 | 브랜치 |
+| `Esc` | 패널 닫기 | 변경사항 |
 
 브랜치 뷰 활성 중에는 `space`, `a`, `d`, `v`가 무시된다 (가드 처리).
 
@@ -310,7 +312,13 @@ b 키
   └── 브랜치 뷰 → 변경사항 뷰
         #branches-view.add_class("hidden")
         #changes-view.remove_class("hidden")
+
+ESC 키
+  ├── 브랜치 뷰 활성 → b 키와 동일하게 변경사항 뷰로 복귀
+  └── 변경사항 뷰 활성 → 패널 닫기 (CloseRequested 발행)
 ```
+
+이렇게 하면 ESC를 연속으로 누르는 직관적인 방법으로 브랜치 뷰 → 변경사항 뷰 → 패널 닫기 흐름을 따를 수 있다.
 
 #### 4.6.9 git init 흐름
 
@@ -405,6 +413,7 @@ stdout 줄 단위 읽기 (proc.stdout 이터레이션)
 - **전역 바인딩**: `CCMWApp.BINDINGS` — 어느 포커스에서도 동작
 - **패널 전용 바인딩**: 각 패널 `BINDINGS` (`priority=True`) — 패널 포커스 시 전역보다 우선
 - **충돌 해결**: `r`은 전역(새로고침)과 GitPanel(새로고침) 모두 정의되지만 GitPanel 포커스 시 `priority=True`로 패널이 먼저 처리
+- **패널 내 뷰 전환**: `b` 키로 변경사항 뷰 ↔ 브랜치 뷰를 전환할 때 새 Screen을 push하지 않고 `#changes-view` / `#branches-view`에 CSS `.hidden` 클래스를 추가·제거하는 방식을 사용한다. 이렇게 하면 패널 바깥 컨텍스트(포커스, 상태)가 유지된다.
 
 ---
 
@@ -486,7 +495,7 @@ src/ccmw/
 | `rich >= 13` | 렌더링, Syntax | 필수 (textual 내장) |
 | `pyte >= 0.8.2` | PTY 스크린 에뮬레이션 | 필수 |
 | `claude` CLI | 터미널 세션, AI 리뷰 | 런타임 필수 |
-| `git` CLI | Git 상태, diff, 커밋, push | Git 기능에 필수 |
+| `git` CLI | 상태 조회, diff, 스테이지, 커밋, push/pull, 브랜치 관리, git init | Git 기능에 필수 |
 | `pbcopy` / `xclip` | 클립보드 복사 | 선택 (OS 제공) |
 
 ---
