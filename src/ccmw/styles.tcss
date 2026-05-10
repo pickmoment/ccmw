@@ -298,8 +298,8 @@ TerminalPanel > #terminal-output {
 
 #git-panel {
     width: 100%;
-    height: 32;
-    max-height: 32;
+    height: 35;
+    max-height: 35;
     border: solid $surface-lighten-2;
     background: $surface;
     layer: base;
@@ -356,6 +356,76 @@ TerminalPanel > #terminal-output {
     border-left: thick $accent;
 }
 
+/* -------------------------------------------------------------------------
+   변경사항 / 브랜치 뷰 전환 컨테이너
+   ------------------------------------------------------------------------- */
+
+#changes-view {
+    width: 100%;
+    height: 1fr;
+    layout: vertical;
+}
+
+#branches-view {
+    width: 100%;
+    height: 1fr;
+    layout: vertical;
+}
+
+/* -------------------------------------------------------------------------
+   브랜치 목록
+   ------------------------------------------------------------------------- */
+
+#branch-list {
+    height: 1fr;
+    background: $surface;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+}
+
+#branch-list > ListItem {
+    background: $surface;
+    padding: 0 1;
+    border-left: thick $surface;
+}
+
+#branch-list > ListItem:hover {
+    background: $surface-lighten-1;
+}
+
+#branch-list > ListItem.--highlight {
+    background: $surface-lighten-2;
+    border-left: thick $surface-lighten-2;
+}
+
+#branch-list:focus > ListItem.--highlight {
+    background: $accent-darken-2;
+    border-left: thick $accent;
+}
+
+#branch-name-input {
+    width: 100%;
+    height: 3;
+    margin: 0;
+    background: $surface-darken-1;
+    border: tall $surface-lighten-2;
+}
+
+#git-branch-buttons {
+    width: 100%;
+    height: 3;
+    padding: 0 1;
+}
+
+#git-branch-buttons Button {
+    margin: 0 0 0 1;
+    width: 1fr;
+}
+
+/* -------------------------------------------------------------------------
+   커밋 입력 / 버튼 행
+   ------------------------------------------------------------------------- */
+
 #git-commit-msg {
     width: 100%;
     height: 3;
@@ -364,19 +434,36 @@ TerminalPanel > #terminal-output {
     border: tall $surface-lighten-2;
 }
 
-#git-buttons {
+#git-stage-row {
     width: 100%;
     height: 3;
     align: right middle;
     padding: 0 1;
 }
 
-#git-buttons Button {
+#git-stage-row Button {
     margin: 0 0 0 1;
-    min-width: 12;
+    min-width: 10;
+}
+
+#git-remote-row {
+    width: 100%;
+    height: 3;
+    padding: 0 1;
+}
+
+#git-remote-row Button {
+    margin: 0 0 0 1;
+    width: 1fr;
 }
 
 #btn-review {
+    width: 100%;
+    height: 3;
+    margin: 0;
+}
+
+#btn-git-init {
     width: 100%;
     height: 3;
     margin: 0;

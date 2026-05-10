@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
@@ -58,6 +58,17 @@ class _Change:
     staged: bool  # index (X) column has a change
 
 
+@dataclass
+class _Branch:
+    name: str
+    is_current: bool
+    is_remote: bool = field(default=False)
+
+
+# ---------------------------------------------------------------------------
+# Git helpers
+# ---------------------------------------------------------------------------
+
 def _run(args: list[str], cwd: Path, timeout: int = 5) -> subprocess.CompletedProcess:
     return subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
 
@@ -86,6 +97,52 @@ def _get_status(cwd: Path) -> list[_Change]:
         return changes
     except Exception:
         return []
+
+
+def _get_remote_status(cwd: Path) -> tuple[int, int, bool]:
+    """(ahead, behind, has_upstream) 반환. upstream 없으면 has_upstream=False."""
+    try:
+        r = _run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cwd)
+        if r.returncode != 0:
+            return 0, 0, False
+        r2 = _run(["git", "rev-list", "--count", "--left-right", "HEAD...@{u}"], cwd)
+        if r2.returncode != 0:
+            return 0, 0, True
+        parts = r2.stdout.strip().split()
+        if len(parts) == 2:
+            return int(parts[0]), int(parts[1]), True
+        return 0, 0, True
+    except Exception:
+        return 0, 0, False
+
+
+def _list_branches(cwd: Path) -> list[_Branch]:
+    """로컬 및 원격 브랜치 목록 반환. 로컬 먼저, 원격 뒤."""
+    branches: list[_Branch] = []
+    try:
+        # 로컬 브랜치 (현재 브랜치 표시 포함)
+        r = _run(["git", "branch", "--format=%(refname:short)|%(HEAD)"], cwd)
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                if "|" not in line:
+                    continue
+                name, head = line.split("|", 1)
+                branches.append(_Branch(
+                    name=name.strip(),
+                    is_current=head.strip() == "*",
+                    is_remote=False,
+                ))
+        # 원격 브랜치 (HEAD 포인터 제외)
+        r2 = _run(["git", "branch", "-r", "--format=%(refname:short)"], cwd)
+        if r2.returncode == 0:
+            for line in r2.stdout.splitlines():
+                name = line.strip()
+                if not name or "HEAD" in name:
+                    continue
+                branches.append(_Branch(name=name, is_current=False, is_remote=True))
+    except Exception:
+        pass
+    return branches
 
 
 def _to_unified(diff_text: str) -> list[Text]:
@@ -145,14 +202,23 @@ def _to_split(diff_text: str) -> tuple[list[Text], list[Text]]:
     return left, right
 
 
+# ---------------------------------------------------------------------------
+# GitPanel
+# ---------------------------------------------------------------------------
+
 class GitPanel(Container):
-    """Git 변경사항 보기, 스테이징, 커밋, 동기화 패널."""
+    """Git 변경사항 보기, 스테이징, 커밋, 동기화, 브랜치 관리 패널."""
 
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("r", "refresh", "새로고침", show=True, priority=True),
         Binding("space", "toggle_stage", "스테이지 토글", show=True),
         Binding("a", "stage_all", "모두 스테이지", show=True),
         Binding("d", "toggle_diff_mode", "Diff 모드", show=True),
+        Binding("p", "pull", "Pull", show=True, priority=True),
+        Binding("b", "toggle_branches", "브랜치", show=True, priority=True),
+        Binding("n", "new_branch_input", "새 브랜치", show=False),
+        Binding("ctrl+d", "delete_branch", "브랜치 삭제", show=False),
+        Binding("i", "init", "git init", show=False),
         Binding("v", "review", "AI 리뷰", show=True),
         Binding("escape", "close", "닫기", show=False, priority=True),
     ]
@@ -168,18 +234,36 @@ class GitPanel(Container):
         self._diff_mode: str = "unified"  # "unified" | "split"
         self._current_diff_text: str = ""
         self._current_diff_path: str = ""
+        self._ahead: int = 0
+        self._behind: int = 0
+        self._has_upstream: bool = False
+        self._branch_view: bool = False
+        self._branches: list[_Branch] = []
 
     def compose(self) -> ComposeResult:
         yield Label("git", id="git-panel-title")
         with Horizontal(id="git-panel-body"):
             with Vertical(id="git-panel-left"):
-                yield ListView(id="git-file-list")
-                yield Input(placeholder="커밋 메시지...", id="git-commit-msg")
-                with Horizontal(id="git-buttons"):
-                    yield Button("모두 스테이지 (a)", id="btn-stage-all")
-                    yield Button("커밋", id="btn-commit", variant="primary")
-                    yield Button("동기화 ↑↓", id="btn-sync", variant="warning")
-                yield Button("AI 리뷰 (v)", id="btn-review", variant="success")
+                # 변경사항 뷰
+                with Vertical(id="changes-view"):
+                    yield ListView(id="git-file-list")
+                    yield Input(placeholder="커밋 메시지...", id="git-commit-msg")
+                    with Horizontal(id="git-stage-row"):
+                        yield Button("스테이지 (a)", id="btn-stage-all")
+                        yield Button("커밋", id="btn-commit", variant="primary")
+                    with Horizontal(id="git-remote-row"):
+                        yield Button("Pull ↓ (p)", id="btn-pull")
+                        yield Button("Push ↑", id="btn-push", variant="warning")
+                    yield Button("AI 리뷰 (v)", id="btn-review", variant="success")
+                    yield Button("git init (i)", id="btn-git-init", variant="warning", classes="hidden")
+                # 브랜치 뷰 (기본 숨김)
+                with Vertical(id="branches-view", classes="hidden"):
+                    yield ListView(id="branch-list")
+                    yield Input(placeholder="새 브랜치 이름... (Enter: 생성)", id="branch-name-input")
+                    with Horizontal(id="git-branch-buttons"):
+                        yield Button("체크아웃", id="btn-checkout", variant="primary")
+                        yield Button("생성", id="btn-create-branch", variant="success")
+                        yield Button("삭제", id="btn-delete-branch", variant="error")
             with Vertical(id="git-diff-pane"):
                 yield Label("", id="git-diff-title")
                 yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False)
@@ -200,17 +284,30 @@ class GitPanel(Container):
         self.action_refresh()
 
     # ------------------------------------------------------------------
-    # Internal
+    # Internal helpers
     # ------------------------------------------------------------------
 
     def _work_dir(self) -> Path:
         return self._root or self._cwd
 
+    def _sync_init_button(self) -> None:
+        try:
+            btn = self.query_one("#btn-git-init", Button)
+            if self._root is None:
+                btn.remove_class("hidden")
+            else:
+                btn.add_class("hidden")
+        except Exception:
+            pass
+
     def _rebuild_list(self) -> None:
         lv: ListView = self.query_one("#git-file-list", ListView)
         lv.clear()
         if not self._changes:
-            lv.append(ListItem(Label("(변경사항 없음)")))
+            if self._root is None:
+                lv.append(ListItem(Label("(Git 저장소 없음  —  i 키로 git init)")))
+            else:
+                lv.append(ListItem(Label("(변경사항 없음)")))
             return
         for c in self._changes:
             chk = "☑" if c.staged else "☐"
@@ -222,29 +319,70 @@ class GitPanel(Container):
                 text = f"{chk} {code}  {c.path}"
             lv.append(ListItem(Label(text)))
 
+    def _rebuild_branch_list(self) -> None:
+        lv: ListView = self.query_one("#branch-list", ListView)
+        lv.clear()
+        if not self._branches:
+            lv.append(ListItem(Label("(브랜치 없음)")))
+            return
+        for b in self._branches:
+            if b.is_current:
+                lv.append(ListItem(Label(Text(f"* {b.name}", style="green bold"))))
+            elif b.is_remote:
+                lv.append(ListItem(Label(Text(f"  {b.name}", style="dim"))))
+            else:
+                lv.append(ListItem(Label(f"  {b.name}")))
+
     def _update_title(self) -> None:
-        staged = sum(1 for c in self._changes if c.staged)
-        total = len(self._changes)
         title = self.query_one("#git-panel-title", Label)
         if self._root is None:
             title.update("git  (저장소 없음)")
+        elif self._branch_view:
+            current = next((b.name for b in self._branches if b.is_current), "")
+            branch_info = f" [{current}]" if current else ""
+            title.update(f"브랜치{branch_info}  Enter·체크아웃  n·새 브랜치  Ctrl+D·삭제")
         else:
-            title.update(f"git  변경 {total}  스테이징됨 {staged}")
+            staged = sum(1 for c in self._changes if c.staged)
+            total = len(self._changes)
+            remote_parts: list[str] = []
+            if self._ahead:
+                remote_parts.append(f"⇡{self._ahead}")
+            if self._behind:
+                remote_parts.append(f"⇣{self._behind}")
+            remote = ("  " + " ".join(remote_parts)) if remote_parts else ""
+            title.update(f"git  변경 {total}  스테이징됨 {staged}{remote}")
 
     def _diff_title_text(self, path: str) -> str:
         mode = "split" if self._diff_mode == "split" else "unified"
         return f"{path}  [{mode}]"
 
     # ------------------------------------------------------------------
-    # Actions
+    # Actions — 변경사항 뷰
     # ------------------------------------------------------------------
 
     def action_refresh(self) -> None:
         self._changes = _get_status(self._work_dir())
         self._rebuild_list()
         self._update_title()
+        self._sync_init_button()
+        self._refresh_remote_status()
+        if self._branch_view:
+            self._load_branches()
+
+    @work(thread=True)
+    def _refresh_remote_status(self) -> None:
+        ahead, behind, has_upstream = _get_remote_status(self._work_dir())
+        def _apply() -> None:
+            self._ahead = ahead
+            self._behind = behind
+            self._has_upstream = has_upstream
+            if not self._branch_view:
+                self._update_title()
+        self.app.call_from_thread(_apply)
 
     def action_toggle_stage(self) -> None:
+        if self._branch_view:
+            return
         lv: ListView = self.query_one("#git-file-list", ListView)
         idx = lv.index
         if idx is None or idx >= len(self._changes):
@@ -261,6 +399,8 @@ class GitPanel(Container):
             self.app.notify(str(exc), severity="error")
 
     def action_stage_all(self) -> None:
+        if self._branch_view:
+            return
         try:
             _run(["git", "add", "-A"], self._work_dir())
             self.action_refresh()
@@ -268,6 +408,8 @@ class GitPanel(Container):
             self.app.notify(str(exc), severity="error")
 
     def action_toggle_diff_mode(self) -> None:
+        if self._branch_view:
+            return
         if self._diff_mode == "unified":
             self._diff_mode = "split"
             self.query_one("#git-diff-unified").add_class("hidden")
@@ -276,7 +418,6 @@ class GitPanel(Container):
             self._diff_mode = "unified"
             self.query_one("#git-diff-split").add_class("hidden")
             self.query_one("#git-diff-unified").remove_class("hidden")
-        # Update title to reflect new mode
         lv = self.query_one("#git-file-list", ListView)
         idx = lv.index
         if idx is not None and idx < len(self._changes):
@@ -285,6 +426,8 @@ class GitPanel(Container):
             )
 
     def action_review(self) -> None:
+        if self._branch_view:
+            return
         if not self._changes:
             self.app.notify("리뷰할 변경 파일이 없습니다", severity="warning")
             return
@@ -303,7 +446,6 @@ class GitPanel(Container):
         )
 
     def _collect_all_diffs(self) -> str:
-        """변경된 모든 파일의 diff를 하나의 문자열로 모아 반환한다."""
         cwd = self._work_dir()
         parts: list[str] = []
         for change in self._changes:
@@ -321,11 +463,198 @@ class GitPanel(Container):
                 pass
         return "\n".join(parts)
 
+    def action_pull(self) -> None:
+        self._do_pull()
+
+    def action_init(self) -> None:
+        if self._root is not None:
+            self.app.notify("이미 Git 저장소입니다", severity="warning")
+            return
+        self._do_init()
+
+    @work(thread=True)
+    def _do_init(self) -> None:
+        cwd = self._cwd
+        self.app.call_from_thread(self.app.notify, "git init 실행 중...", timeout=2)
+        try:
+            result = subprocess.run(
+                ["git", "init"], cwd=str(cwd),
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, f"git init 완료: {cwd.name}", timeout=3)
+            def _apply() -> None:
+                self._root = _get_git_root(self._cwd)
+                self.action_refresh()
+            self.app.call_from_thread(_apply)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+
     def action_close(self) -> None:
         self.post_message(self.CloseRequested())
 
     # ------------------------------------------------------------------
-    # Diff loading
+    # Actions — 브랜치 뷰
+    # ------------------------------------------------------------------
+
+    def action_toggle_branches(self) -> None:
+        if self._branch_view:
+            self._branch_view = False
+            self.query_one("#changes-view").remove_class("hidden")
+            self.query_one("#branches-view").add_class("hidden")
+            self._update_title()
+            try:
+                self.query_one("#git-file-list", ListView).focus()
+            except Exception:
+                pass
+        else:
+            self._branch_view = True
+            self.query_one("#changes-view").add_class("hidden")
+            self.query_one("#branches-view").remove_class("hidden")
+            self._load_branches()
+            self._update_title()
+            try:
+                self.query_one("#branch-list", ListView).focus()
+            except Exception:
+                pass
+
+    def action_new_branch_input(self) -> None:
+        if not self._branch_view:
+            return
+        try:
+            self.query_one("#branch-name-input", Input).focus()
+        except Exception:
+            pass
+
+    def action_delete_branch(self) -> None:
+        if not self._branch_view:
+            return
+        self._delete_selected_branch()
+
+    # ------------------------------------------------------------------
+    # Branch helpers
+    # ------------------------------------------------------------------
+
+    def _checkout_selected(self) -> None:
+        lv = self.query_one("#branch-list", ListView)
+        idx = lv.index
+        if idx is None or idx >= len(self._branches):
+            return
+        branch = self._branches[idx]
+        if branch.is_current:
+            self.app.notify("이미 현재 브랜치입니다", severity="warning")
+            return
+        self._do_checkout(branch.name, branch.is_remote)
+
+    def _create_branch_from_input(self) -> None:
+        name_input = self.query_one("#branch-name-input", Input)
+        name = name_input.value.strip()
+        if not name:
+            self.app.notify("브랜치 이름을 입력하세요", severity="warning")
+            name_input.focus()
+            return
+        name_input.value = ""
+        self._do_create_branch(name)
+
+    def _delete_selected_branch(self) -> None:
+        lv = self.query_one("#branch-list", ListView)
+        idx = lv.index
+        if idx is None or idx >= len(self._branches):
+            return
+        branch = self._branches[idx]
+        if branch.is_current:
+            self.app.notify("현재 브랜치는 삭제할 수 없습니다", severity="warning")
+            return
+        if branch.is_remote:
+            self.app.notify("원격 브랜치는 이 패널에서 삭제할 수 없습니다", severity="warning")
+            return
+        self._do_delete_branch(branch.name)
+
+    # ------------------------------------------------------------------
+    # Branch workers
+    # ------------------------------------------------------------------
+
+    @work(thread=True)
+    def _load_branches(self) -> None:
+        branches = _list_branches(self._work_dir())
+        def _apply() -> None:
+            self._branches = branches
+            self._rebuild_branch_list()
+            self._update_title()
+        self.app.call_from_thread(_apply)
+
+    @work(thread=True)
+    def _do_checkout(self, branch_name: str, is_remote: bool) -> None:
+        cwd = self._work_dir()
+        self.app.call_from_thread(self.app.notify, f"체크아웃: {branch_name}...", timeout=2)
+        try:
+            if is_remote:
+                # "origin/feat" → local "feat" tracking "origin/feat"
+                local_name = branch_name.split("/", 1)[-1]
+                cmd = ["git", "checkout", "-b", local_name, "--track", branch_name]
+            else:
+                cmd = ["git", "checkout", branch_name]
+            result = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            self.app.call_from_thread(self.app.notify, "체크아웃 시간 초과", severity="error")
+            return
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, f"브랜치 전환 완료", timeout=3)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+        self.call_from_thread(self.action_refresh)
+
+    @work(thread=True)
+    def _do_create_branch(self, branch_name: str) -> None:
+        cwd = self._work_dir()
+        self.app.call_from_thread(self.app.notify, f"브랜치 생성 중: {branch_name}...", timeout=2)
+        try:
+            result = subprocess.run(
+                ["git", "checkout", "-b", branch_name],
+                cwd=str(cwd), capture_output=True, text=True, timeout=30,
+            )
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, f"브랜치 생성 완료: {branch_name}", timeout=3)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+        self.call_from_thread(self.action_refresh)
+
+    @work(thread=True)
+    def _do_delete_branch(self, branch_name: str) -> None:
+        cwd = self._work_dir()
+        try:
+            result = subprocess.run(
+                ["git", "branch", "-d", branch_name],
+                cwd=str(cwd), capture_output=True, text=True, timeout=30,
+            )
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, f"브랜치 삭제: {branch_name}", timeout=3)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+        self.call_from_thread(self.action_refresh)
+
+    # ------------------------------------------------------------------
+    # Diff loading (변경사항 뷰 전용)
     # ------------------------------------------------------------------
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
@@ -336,6 +665,10 @@ class GitPanel(Container):
             self._clear_diff()
             return
         self._load_diff(self._changes[idx])
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.id == "branch-list":
+            self._checkout_selected()
 
     def _clear_diff(self) -> None:
         try:
@@ -379,7 +712,6 @@ class GitPanel(Container):
         self._current_diff_text = raw_diff
         self._current_diff_path = change.path
         path = change.path
-        diff_mode = self._diff_mode
 
         def _update() -> None:
             try:
@@ -429,31 +761,59 @@ class GitPanel(Container):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "git-commit-msg":
             self._do_commit()
+        elif event.input.id == "branch-name-input":
+            self._create_branch_from_input()
 
     # ------------------------------------------------------------------
-    # Sync (push) — background thread
+    # Remote sync (pull / push) — background threads
     # ------------------------------------------------------------------
 
     @work(thread=True)
-    def _do_sync(self) -> None:
+    def _do_pull(self) -> None:
         cwd = self._work_dir()
-        self.app.call_from_thread(self.app.notify, "동기화 중...", timeout=2)
+        self.app.call_from_thread(self.app.notify, "Pull 중...", timeout=2)
         try:
             result = subprocess.run(
-                ["git", "push"], cwd=str(cwd),
+                ["git", "pull"], cwd=str(cwd),
                 capture_output=True, text=True, timeout=60,
             )
         except subprocess.TimeoutExpired:
-            self.app.call_from_thread(
-                self.app.notify, "동기화 시간 초과", severity="error"
-            )
+            self.app.call_from_thread(self.app.notify, "Pull 시간 초과", severity="error")
             return
         except Exception as exc:
             self.app.call_from_thread(self.app.notify, str(exc), severity="error")
             return
 
         if result.returncode == 0:
-            self.app.call_from_thread(self.app.notify, "동기화 완료", timeout=3)
+            msg = (result.stdout.strip() or "Pull 완료")[:80]
+            self.app.call_from_thread(self.app.notify, msg, timeout=3)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+        self.call_from_thread(self.action_refresh)
+
+    @work(thread=True)
+    def _do_push(self) -> None:
+        cwd = self._work_dir()
+        self.app.call_from_thread(self.app.notify, "Push 중...", timeout=2)
+        try:
+            _, _, has_upstream = _get_remote_status(cwd)
+            if not has_upstream:
+                r = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
+                branch = r.stdout.strip() if r.returncode == 0 else "main"
+                cmd = ["git", "push", "--set-upstream", "origin", branch]
+            else:
+                cmd = ["git", "push"]
+            result = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            self.app.call_from_thread(self.app.notify, "Push 시간 초과", severity="error")
+            return
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, "Push 완료", timeout=3)
         else:
             err = result.stderr.strip() or result.stdout.strip()
             self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
@@ -468,7 +828,17 @@ class GitPanel(Container):
             self.action_stage_all()
         elif event.button.id == "btn-commit":
             self._do_commit()
-        elif event.button.id == "btn-sync":
-            self._do_sync()
+        elif event.button.id == "btn-pull":
+            self._do_pull()
+        elif event.button.id == "btn-push":
+            self._do_push()
         elif event.button.id == "btn-review":
             self.action_review()
+        elif event.button.id == "btn-git-init":
+            self.action_init()
+        elif event.button.id == "btn-checkout":
+            self._checkout_selected()
+        elif event.button.id == "btn-create-branch":
+            self._create_branch_from_input()
+        elif event.button.id == "btn-delete-branch":
+            self._delete_selected_branch()

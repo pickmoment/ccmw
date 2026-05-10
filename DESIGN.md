@@ -60,7 +60,7 @@
 
 하단 오버레이 (display: none ↔ block 토글)
 ├── #session-panel      최대 14행 높이
-└── #git-panel          32행 고정 높이
+└── #git-panel          35행 고정 높이
 ```
 
 ---
@@ -190,27 +190,146 @@ refresh_git_status()
 
 ### 4.6 GitPanel (`widgets/git_panel.py`)
 
-**역할**: VS Code Source Control 패널과 유사한 Git 작업 UI.
+**역할**: Git 변경사항 관리, 원격 동기화, 브랜치 관리, 저장소 초기화를 단일 패널에서 제공.
 
-**레이아웃**
+#### 4.6.1 레이아웃
 
 ```
-GitPanel (Horizontal)
-├── #git-panel-left (36열 고정)
-│   ├── #git-file-list (ListView)
-│   ├── #git-commit-msg (Input)
-│   ├── #git-buttons (스테이지 / 커밋 / 동기화)
-│   └── #btn-review (AI 리뷰)
-└── #git-diff-pane (1fr)
-    ├── unified 모드: RichLog
-    └── split 모드: SyncedRichLog(left) + SyncedRichLog(right)
+GitPanel (35행 고정)
+├── #git-panel-title (1행) — 모드·원격 상태 표시
+└── #git-panel-body (Horizontal)
+    ├── #git-panel-left (36열 고정)
+    │   ├── #changes-view (변경사항 뷰, 기본 표시)
+    │   │   ├── #git-file-list (ListView, 1fr)
+    │   │   ├── #git-commit-msg (Input)
+    │   │   ├── #git-stage-row  [스테이지 (a)] [커밋]
+    │   │   ├── #git-remote-row [Pull ↓ (p)] [Push ↑]
+    │   │   ├── #btn-review     [AI 리뷰 (v)]
+    │   │   └── #btn-git-init   [git init (i)]  ← 저장소 없을 때만 표시
+    │   └── #branches-view (브랜치 뷰, 기본 숨김)
+    │       ├── #branch-list (ListView, 1fr)
+    │       ├── #branch-name-input (Input)
+    │       └── #git-branch-buttons [체크아웃] [생성] [삭제]
+    └── #git-diff-pane (1fr)
+        ├── unified 모드: RichLog
+        └── split 모드: SyncedRichLog(left) + SyncedRichLog(right)
 ```
 
-**SyncedRichLog**: `watch_scroll_y`/`watch_scroll_x` 반응형 속성으로 좌우 패널 스크롤 동기화.
+#### 4.6.2 데이터 모델
 
-**Diff 로딩**: `@work(thread=True)` 데코레이터로 백그라운드 스레드에서 `git diff` 실행 → `app.call_from_thread()`로 UI 업데이트.
+```python
+@dataclass
+class _Change:
+    xy: str       # git porcelain XY 코드 (예: "M ", " M", "??")
+    path: str     # 저장소 루트 기준 상대 경로
+    staged: bool  # X 컬럼(인덱스)에 변경이 있으면 True
 
-**동기화(Push)**: `@work(thread=True)` — 60초 타임아웃, 성공/실패 `app.notify()`.
+@dataclass
+class _Branch:
+    name: str        # 브랜치 이름 (원격은 "origin/main" 형태)
+    is_current: bool # 현재 체크아웃된 브랜치
+    is_remote: bool  # 원격 추적 브랜치 여부
+```
+
+#### 4.6.3 GitPanel 상태
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `_cwd` | `Path` | 현재 작업 디렉터리 |
+| `_root` | `Path \| None` | git 저장소 루트 (`None` = 저장소 없음) |
+| `_changes` | `list[_Change]` | 변경 파일 목록 |
+| `_diff_mode` | `str` | `"unified"` \| `"split"` |
+| `_ahead` | `int` | 원격보다 앞선 커밋 수 |
+| `_behind` | `int` | 원격보다 뒤처진 커밋 수 |
+| `_has_upstream` | `bool` | upstream 브랜치 설정 여부 |
+| `_branch_view` | `bool` | 브랜치 뷰 활성화 여부 |
+| `_branches` | `list[_Branch]` | 로컬 + 원격 브랜치 목록 |
+
+#### 4.6.4 키 바인딩
+
+| 키 | 동작 | 뷰 |
+|----|------|-----|
+| `r` | 상태 새로고침 | 공통 |
+| `space` | 선택 파일 스테이지/언스테이지 | 변경사항 |
+| `a` | 모든 파일 스테이지 | 변경사항 |
+| `d` | Diff 모드 전환 (Unified ↔ Split) | 변경사항 |
+| `p` | Pull | 변경사항 |
+| `v` | AI 코드 리뷰 | 변경사항 |
+| `b` | 변경사항 ↔ 브랜치 뷰 전환 | 공통 |
+| `n` | 새 브랜치 이름 입력창 포커스 | 브랜치 |
+| `Enter` | 선택 브랜치 체크아웃 | 브랜치 |
+| `Ctrl+D` | 선택 로컬 브랜치 삭제 | 브랜치 |
+| `i` | git init (저장소 없을 때만 동작) | 공통 |
+| `Esc` | 패널 닫기 | 공통 |
+
+브랜치 뷰 활성 중에는 `space`, `a`, `d`, `v`가 무시된다 (가드 처리).
+
+#### 4.6.5 Git 헬퍼 함수
+
+| 함수 | 명령 | 반환 |
+|------|------|------|
+| `_get_git_root(cwd)` | `git rev-parse --show-toplevel` | `Path \| None` |
+| `_get_status(cwd)` | `git status --porcelain` | `list[_Change]` |
+| `_get_remote_status(cwd)` | `git rev-list --count --left-right HEAD...@{u}` | `(ahead, behind, has_upstream)` |
+| `_list_branches(cwd)` | `git branch --format=...` + `git branch -r` | `list[_Branch]` |
+
+#### 4.6.6 워커 목록
+
+| 워커 | 명령 | 비고 |
+|------|------|------|
+| `_refresh_remote_status()` | `_get_remote_status()` | `action_refresh` 호출마다 실행 |
+| `_load_branches()` | `_list_branches()` | 브랜치 뷰 진입·`action_refresh` 시 |
+| `_load_diff(change)` | `git diff [--cached]` | 파일 목록 하이라이트 변경마다 |
+| `_do_pull()` | `git pull` | 60초 타임아웃 |
+| `_do_push()` | `git push [--set-upstream origin <branch>]` | upstream 없으면 자동 설정 |
+| `_do_checkout(name, is_remote)` | `git checkout [-b --track]` | 원격 브랜치는 로컬 추적 브랜치 생성 |
+| `_do_create_branch(name)` | `git checkout -b <name>` | 생성 후 즉시 전환 |
+| `_do_delete_branch(name)` | `git branch -d <name>` | 안전 삭제 (merge 안 된 브랜치 보호) |
+| `_do_init()` | `git init` | 완료 후 `_root` 재탐지 및 전체 새로고침 |
+
+모든 워커는 `@work(thread=True)`로 실행되며, UI 업데이트는 `app.call_from_thread()`를 통해 메인 스레드에서 처리한다.
+
+#### 4.6.7 원격 상태 표시
+
+```
+타이틀 예시: git  변경 3  스테이징됨 1  ⇡2 ⇣0
+```
+
+- `⇡N`: 로컬이 원격보다 N커밋 앞섬 (push 필요)
+- `⇣N`: 원격이 로컬보다 N커밋 앞섬 (pull 필요)
+- upstream 없으면 표시 없음; Push 시 자동으로 `--set-upstream origin <branch>` 적용
+
+#### 4.6.8 뷰 전환 메커니즘
+
+```
+b 키
+  ├── 변경사항 뷰 → 브랜치 뷰
+  │     #changes-view.add_class("hidden")
+  │     #branches-view.remove_class("hidden")
+  │     _load_branches()  (worker)
+  └── 브랜치 뷰 → 변경사항 뷰
+        #branches-view.add_class("hidden")
+        #changes-view.remove_class("hidden")
+```
+
+#### 4.6.9 git init 흐름
+
+```
+저장소 없음 (_root is None)
+  → #btn-git-init 버튼 표시
+  → 파일 목록: "(Git 저장소 없음  —  i 키로 git init)"
+
+i 키 또는 버튼 클릭
+  → _do_init() worker
+      git init (cwd)
+      성공 → _root = _get_git_root() 재탐지
+           → action_refresh() 호출 (버튼 숨김, 목록 갱신)
+      실패 → 에러 토스트
+```
+
+#### 4.6.10 SyncedRichLog
+
+`RichLog`를 상속. `watch_scroll_y` / `watch_scroll_x` 반응형 속성으로 split 뷰의 좌우 패널 스크롤을 항상 동기화한다.
 
 ---
 
@@ -296,14 +415,21 @@ asyncio 이벤트 루프 (Textual 내장)
 │
 ├─ PTY fd read callback (add_reader)  ← 블로킹 없이 PTY 출력 수신
 ├─ Timer 0.2s  ← IME 언어 폴링
-├─ Timer 5.0s  ← Git 상태 폴링
+├─ Timer 5.0s  ← Git 상태 폴링 (FileBrowser)
 │
 └─ @work(thread=True) 워커 스레드 풀
-   ├─ FileBrowser._fetch_git_status()   (git CLI 실행)
-   ├─ GitPanel._load_diff()             (git diff 실행)
-   ├─ GitPanel._do_sync()               (git push 실행)
-   ├─ ClaudeReviewModal._start_review() (claude -p 스트리밍)
-   └─ ClaudeReviewModal._start_follow_up()
+   ├─ FileBrowser._fetch_git_status()      (git status, branch)
+   ├─ GitPanel._refresh_remote_status()    (git rev-list ahead/behind)
+   ├─ GitPanel._load_diff()                (git diff)
+   ├─ GitPanel._load_branches()            (git branch -a)
+   ├─ GitPanel._do_pull()                  (git pull, 60s timeout)
+   ├─ GitPanel._do_push()                  (git push [--set-upstream])
+   ├─ GitPanel._do_checkout()              (git checkout [-b --track])
+   ├─ GitPanel._do_create_branch()         (git checkout -b)
+   ├─ GitPanel._do_delete_branch()         (git branch -d)
+   ├─ GitPanel._do_init()                  (git init)
+   ├─ ClaudeReviewModal._start_review()    (claude -p 스트리밍)
+   └─ ClaudeReviewModal._start_follow_up() (claude -p --resume)
        └─ app.call_from_thread() → 메인 스레드 UI 업데이트
 ```
 
@@ -371,7 +497,10 @@ src/ccmw/
 |------|-----------|-----------|
 | 클립보드 | macOS/Linux만 지원 | `pyperclip` 또는 Textual 내장 clipboard API 검토 |
 | PTY 렌더링 | 마우스 선택 불가 | Textual `SelectionList` 또는 별도 copy 모드 구현 |
-| Git Push | `git push` 단순 실행 | upstream 없을 시 안내, `--set-upstream` 지원 |
+| 브랜치 삭제 | `-d` 안전 삭제만 지원 | `-D` 강제 삭제 확인 다이얼로그 추가 |
+| 원격 브랜치 삭제 | 미지원 | `git push origin --delete <branch>` 추가 |
+| git stash | 미지원 | stash list·pop·drop 기능 추가 |
+| Merge conflict | 미지원 | conflict 파일 표시 및 에디터 연동 |
 | 세션 필터 | 현재 cwd만 표시 | 전체 세션 표시 옵션 추가 |
 | IME 감지 | macOS 전용 | Linux(IBus/fcitx) 지원 확장 가능 |
 | 설정 | 하드코딩 | `~/.config/ccmw/config.toml` 도입 |
