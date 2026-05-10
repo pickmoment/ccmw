@@ -334,7 +334,7 @@ class GitPanel(Container):
         self._cwd = cwd
         self._root: Path | None = None
         self._changes: list[_Change] = []
-        self._diff_mode: str = "unified"  # "unified" | "split"
+        self._diff_mode: str = "split"  # "unified" | "split"
         self._current_diff_text: str = ""
         self._current_diff_path: str = ""
         self._ahead: int = 0
@@ -378,10 +378,11 @@ class GitPanel(Container):
                         yield Button("Mixed", id="btn-reset-mixed", variant="warning")
                         yield Button("Hard!", id="btn-reset-hard", variant="error")
                         yield Button("Revert", id="btn-revert", variant="primary")
+                        yield Button("AI 리뷰 (v)", id="btn-review-commit", variant="success")
             with Vertical(id="git-diff-pane"):
                 yield Label("", id="git-diff-title")
-                yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False)
-                with Horizontal(id="git-diff-split", classes="hidden"):
+                yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False, classes="hidden")
+                with Horizontal(id="git-diff-split"):
                     yield SyncedRichLog(id="git-diff-old", markup=False, highlight=False, wrap=False)
                     yield SyncedRichLog(id="git-diff-new", markup=False, highlight=False, wrap=False)
 
@@ -532,7 +533,7 @@ class GitPanel(Container):
             self.app.notify(str(exc), severity="error")
 
     def action_toggle_diff_mode(self) -> None:
-        if not self._in_changes_view:
+        if self._branch_view:
             return
         if self._diff_mode == "unified":
             self._diff_mode = "split"
@@ -542,12 +543,20 @@ class GitPanel(Container):
             self._diff_mode = "unified"
             self.query_one("#git-diff-split").add_class("hidden")
             self.query_one("#git-diff-unified").remove_class("hidden")
-        lv = self.query_one("#git-file-list", ListView)
-        idx = lv.index
-        if idx is not None and idx < len(self._changes):
-            self.query_one("#git-diff-title", Label).update(
-                self._diff_title_text(self._changes[idx].path)
-            )
+        if self._in_changes_view:
+            lv = self.query_one("#git-file-list", ListView)
+            idx = lv.index
+            if idx is not None and idx < len(self._changes):
+                self.query_one("#git-diff-title", Label).update(
+                    self._diff_title_text(self._changes[idx].path)
+                )
+        elif self._history_view:
+            commit = self._selected_commit()
+            if commit is not None:
+                mode = "split" if self._diff_mode == "split" else "unified"
+                self.query_one("#git-diff-title", Label).update(
+                    f"{commit.short_hash}  {commit.date}  {commit.author}  {commit.message[:50]}  [{mode}]"
+                )
 
     def action_restore(self) -> None:
         """선택한 파일의 워킹 디렉터리 변경사항을 되돌린다 (git restore)."""
@@ -592,6 +601,13 @@ class GitPanel(Container):
             self.app.call_from_thread(self.action_refresh)
 
     def action_review(self) -> None:
+        if self._history_view:
+            commit = self._selected_commit()
+            if commit is None:
+                self.app.notify("리뷰할 커밋을 선택하세요", severity="warning")
+                return
+            self._review_commit(commit)
+            return
         if not self._in_changes_view:
             return
         if not self._changes:
@@ -610,6 +626,28 @@ class GitPanel(Container):
                 cwd=self._work_dir(),
             )
         )
+
+    @work(thread=True)
+    def _review_commit(self, commit: _Commit) -> None:
+        cwd = self._work_dir()
+        try:
+            result = _run(["git", "show", "--patch", commit.hash], cwd, timeout=15)
+            diff_text = result.stdout
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+        if not diff_text:
+            self.app.call_from_thread(
+                self.app.notify, "리뷰할 diff가 없습니다", severity="warning"
+            )
+            return
+        title = f"{commit.short_hash}  {commit.date}  {commit.message[:40]}"
+
+        def _open() -> None:
+            self.app.push_screen(
+                ClaudeReviewModal(diff_text=diff_text, title=title, cwd=cwd)
+            )
+        self.app.call_from_thread(_open)
 
     def _collect_all_diffs(self) -> str:
         cwd = self._work_dir()
@@ -804,20 +842,31 @@ class GitPanel(Container):
             diff_text = result.stdout
         except Exception as exc:
             diff_text = f"오류: {exc}"
-        unified = _to_unified(diff_text) if diff_text else [Text("(diff 없음)", style="bright_black")]
+        if diff_text:
+            unified = _to_unified(diff_text)
+            left, right = _to_split(diff_text)
+        else:
+            msg = Text("(diff 없음)", style="bright_black")
+            unified, left, right = [msg], [msg], [msg]
 
         def _update() -> None:
             try:
+                mode = "split" if self._diff_mode == "split" else "unified"
                 self.query_one("#git-diff-title", Label).update(
-                    f"{commit.short_hash}  {commit.date}  {commit.author}  {commit.message[:50]}"
+                    f"{commit.short_hash}  {commit.date}  {commit.author}  {commit.message[:50]}  [{mode}]"
                 )
                 u_log = self.query_one("#git-diff-unified", RichLog)
                 u_log.clear()
                 for t in unified:
                     u_log.write(t)
-                # split pane는 비워 둠
-                self.query_one("#git-diff-old", SyncedRichLog).clear()
-                self.query_one("#git-diff-new", SyncedRichLog).clear()
+                old_log = self.query_one("#git-diff-old", SyncedRichLog)
+                new_log = self.query_one("#git-diff-new", SyncedRichLog)
+                old_log.clear()
+                new_log.clear()
+                for t in left:
+                    old_log.write(t)
+                for t in right:
+                    new_log.write(t)
             except Exception:
                 pass
         self.app.call_from_thread(_update)
@@ -1185,6 +1234,8 @@ class GitPanel(Container):
             self.action_reset_hard()
         elif event.button.id == "btn-revert":
             self.action_revert_commit()
+        elif event.button.id == "btn-review-commit":
+            self.action_review()
         elif event.button.id == "btn-stage-all":
             self.action_stage_all()
         elif event.button.id == "btn-commit":
