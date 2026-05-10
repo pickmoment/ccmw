@@ -179,8 +179,6 @@ class FileViewer(Widget):
 
                 target_w = min(max_width, orig_w)
                 target_h = round(orig_h * (target_w / orig_w))
-                # Note: terminal cells are typically ~2:1 (height:width), so the
-                # rendered image will appear roughly half as tall as expected.
                 # half-block pairs 2 pixel rows per line; ensure even height
                 if target_h % 2 != 0:
                     target_h += 1

@@ -12,10 +12,70 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
+from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, ListItem, ListView, RichLog
 from textual import work
 
 from ccmw.widgets.claude_review_modal import ClaudeReviewModal
+
+
+class ConfirmModal(ModalScreen[bool]):
+    """위험한 작업 전 확인을 요청하는 모달."""
+
+    DEFAULT_CSS = """
+    ConfirmModal {
+        align: center middle;
+    }
+    #confirm-dialog {
+        width: 64;
+        height: auto;
+        padding: 1 2;
+        background: $surface;
+        border: solid $error;
+    }
+    #confirm-message {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+        text-align: center;
+        color: $text;
+    }
+    #confirm-buttons {
+        width: 100%;
+        height: 3;
+        align: center middle;
+    }
+    #confirm-buttons Button {
+        margin: 0 1;
+        min-width: 14;
+    }
+    """
+
+    BINDINGS = [
+        Binding("y", "confirm", show=False),
+        Binding("escape", "cancel", show=False),
+        Binding("n", "cancel", show=False),
+    ]
+
+    def __init__(self, message: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-dialog"):
+            yield Label(self._message, id="confirm-message")
+            with Horizontal(id="confirm-buttons"):
+                yield Button("취소 (n/ESC)", id="btn-cancel-confirm")
+                yield Button("확인 (y)", id="btn-ok-confirm", variant="error")
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "btn-ok-confirm")
 
 
 class SyncedRichLog(RichLog):
@@ -63,6 +123,16 @@ class _Branch:
     name: str
     is_current: bool
     is_remote: bool = field(default=False)
+
+
+@dataclass
+class _Commit:
+    hash: str
+    short_hash: str
+    date: str
+    author: str
+    message: str
+    refs: str
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +215,36 @@ def _list_branches(cwd: Path) -> list[_Branch]:
     return branches
 
 
+def _get_log(cwd: Path, max_count: int = 200) -> list[_Commit]:
+    try:
+        sep = "\x1f"
+        fmt = sep.join(["%H", "%h", "%ad", "%an", "%s", "%D"])
+        r = _run(
+            ["git", "log", f"--format={fmt}", "--date=format:%m-%d", f"-{max_count}"],
+            cwd, timeout=10,
+        )
+        if r.returncode != 0:
+            return []
+        commits: list[_Commit] = []
+        for line in r.stdout.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split(sep)
+            if len(parts) < 5:
+                continue
+            commits.append(_Commit(
+                hash=parts[0].strip(),
+                short_hash=parts[1].strip(),
+                date=parts[2].strip(),
+                author=parts[3].strip(),
+                message=parts[4].strip(),
+                refs=parts[5].strip() if len(parts) > 5 else "",
+            ))
+        return commits
+    except Exception:
+        return []
+
+
 def _to_unified(diff_text: str) -> list[Text]:
     lines: list[Text] = []
     for line in diff_text.splitlines():
@@ -213,10 +313,12 @@ class GitPanel(Container):
         Binding("r", "refresh", "새로고침", show=True, priority=True),
         Binding("space", "toggle_stage", "스테이지 토글", show=True),
         Binding("a", "stage_all", "모두 스테이지", show=True),
+        Binding("x", "restore", "변경 되돌리기", show=True),
         Binding("d", "toggle_diff_mode", "Diff 모드", show=True),
         Binding("p", "pull", "Pull", show=True, priority=True),
         Binding("u", "push", "Push", show=True, priority=True),
         Binding("b", "toggle_branches", "브랜치", show=True, priority=True),
+        Binding("h", "toggle_history", "히스토리", show=True, priority=True),
         Binding("n", "new_branch_input", "새 브랜치", show=False),
         Binding("ctrl+d", "delete_branch", "브랜치 삭제", show=False),
         Binding("i", "init", "git init", show=False),
@@ -240,6 +342,8 @@ class GitPanel(Container):
         self._has_upstream: bool = False
         self._branch_view: bool = False
         self._branches: list[_Branch] = []
+        self._history_view: bool = False
+        self._commits: list[_Commit] = []
 
     def compose(self) -> ComposeResult:
         yield Label("git", id="git-panel-title")
@@ -252,6 +356,7 @@ class GitPanel(Container):
                     with Horizontal(id="git-stage-row"):
                         yield Button("스테이지 (a)", id="btn-stage-all")
                         yield Button("커밋", id="btn-commit", variant="primary")
+                        yield Button("복원 (x)", id="btn-restore", variant="error")
                     with Vertical(id="git-remote-row"):
                         yield Button("Pull ↓ (p)", id="btn-pull")
                         yield Button("Push ↑ (u)", id="btn-push", variant="warning")
@@ -265,6 +370,14 @@ class GitPanel(Container):
                         yield Button("체크아웃", id="btn-checkout", variant="primary")
                         yield Button("생성", id="btn-create-branch", variant="success")
                         yield Button("삭제", id="btn-delete-branch", variant="error")
+                # 히스토리 뷰 (기본 숨김)
+                with Vertical(id="history-view", classes="hidden"):
+                    yield ListView(id="commit-list")
+                    with Horizontal(id="git-history-buttons"):
+                        yield Button("Soft", id="btn-reset-soft")
+                        yield Button("Mixed", id="btn-reset-mixed", variant="warning")
+                        yield Button("Hard!", id="btn-reset-hard", variant="error")
+                        yield Button("Revert", id="btn-revert", variant="primary")
             with Vertical(id="git-diff-pane"):
                 yield Label("", id="git-diff-title")
                 yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False)
@@ -290,6 +403,10 @@ class GitPanel(Container):
 
     def _work_dir(self) -> Path:
         return self._root or self._cwd
+
+    @property
+    def _in_changes_view(self) -> bool:
+        return not self._branch_view and not self._history_view
 
     def _sync_init_button(self) -> None:
         try:
@@ -338,6 +455,12 @@ class GitPanel(Container):
         title = self.query_one("#git-panel-title", Label)
         if self._root is None:
             title.update("git  (저장소 없음)")
+        elif self._history_view:
+            total = len(self._commits)
+            title.update(
+                f"히스토리  커밋 {total}개  "
+                "Soft·스테이징 보존  Mixed·워킹트리 보존  Hard·전부 삭제  Revert·역커밋  h/ESC·뒤로"
+            )
         elif self._branch_view:
             current = next((b.name for b in self._branches if b.is_current), "")
             branch_info = f" [{current}]" if current else ""
@@ -382,7 +505,7 @@ class GitPanel(Container):
         self.app.call_from_thread(_apply)
 
     def action_toggle_stage(self) -> None:
-        if self._branch_view:
+        if not self._in_changes_view:
             return
         lv: ListView = self.query_one("#git-file-list", ListView)
         idx = lv.index
@@ -400,7 +523,7 @@ class GitPanel(Container):
             self.app.notify(str(exc), severity="error")
 
     def action_stage_all(self) -> None:
-        if self._branch_view:
+        if not self._in_changes_view:
             return
         try:
             _run(["git", "add", "-A"], self._work_dir())
@@ -409,7 +532,7 @@ class GitPanel(Container):
             self.app.notify(str(exc), severity="error")
 
     def action_toggle_diff_mode(self) -> None:
-        if self._branch_view:
+        if not self._in_changes_view:
             return
         if self._diff_mode == "unified":
             self._diff_mode = "split"
@@ -426,8 +549,50 @@ class GitPanel(Container):
                 self._diff_title_text(self._changes[idx].path)
             )
 
+    def action_restore(self) -> None:
+        """선택한 파일의 워킹 디렉터리 변경사항을 되돌린다 (git restore)."""
+        if not self._in_changes_view:
+            return
+        lv: ListView = self.query_one("#git-file-list", ListView)
+        idx = lv.index
+        if idx is None or idx >= len(self._changes):
+            return
+        change = self._changes[idx]
+        if change.xy == "??":
+            self.app.notify("추적되지 않는 파일은 복원할 수 없습니다 (git clean 필요)", severity="warning")
+            return
+        self._do_restore(change.path, change.staged)
+
+    @work(thread=True)
+    def _do_restore(self, path: str, staged: bool) -> None:
+        cwd = self._work_dir()
+        try:
+            if staged:
+                # 스테이징 해제 후 워킹 디렉터리도 복원
+                r1 = subprocess.run(
+                    ["git", "restore", "--staged", path],
+                    cwd=str(cwd), capture_output=True, text=True, timeout=10,
+                )
+                if r1.returncode != 0:
+                    err = r1.stderr.strip() or r1.stdout.strip()
+                    self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+                    return
+            result = subprocess.run(
+                ["git", "restore", path],
+                cwd=str(cwd), capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0:
+                self.app.call_from_thread(self.app.notify, f"복원 완료: {path}", timeout=3)
+            else:
+                err = result.stderr.strip() or result.stdout.strip()
+                self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+        finally:
+            self.app.call_from_thread(self.action_refresh)
+
     def action_review(self) -> None:
-        if self._branch_view:
+        if not self._in_changes_view:
             return
         if not self._changes:
             self.app.notify("리뷰할 변경 파일이 없습니다", severity="warning")
@@ -500,7 +665,9 @@ class GitPanel(Container):
             self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
 
     def action_close(self) -> None:
-        if self._branch_view:
+        if self._history_view:
+            self.action_toggle_history()
+        elif self._branch_view:
             self.action_toggle_branches()
         else:
             self.post_message(self.CloseRequested())
@@ -520,6 +687,9 @@ class GitPanel(Container):
             except Exception:
                 pass
         else:
+            if self._history_view:
+                self._history_view = False
+                self.query_one("#history-view").add_class("hidden")
             self._branch_view = True
             self.query_one("#changes-view").add_class("hidden")
             self.query_one("#branches-view").remove_class("hidden")
@@ -529,6 +699,179 @@ class GitPanel(Container):
                 self.query_one("#branch-list", ListView).focus()
             except Exception:
                 pass
+
+    def action_toggle_history(self) -> None:
+        if self._history_view:
+            self._history_view = False
+            self.query_one("#changes-view").remove_class("hidden")
+            self.query_one("#history-view").add_class("hidden")
+            self._update_title()
+            try:
+                self.query_one("#git-file-list", ListView).focus()
+            except Exception:
+                pass
+        else:
+            if self._branch_view:
+                self._branch_view = False
+                self.query_one("#branches-view").add_class("hidden")
+            self._history_view = True
+            self.query_one("#changes-view").add_class("hidden")
+            self.query_one("#history-view").remove_class("hidden")
+            self._load_commits()
+            self._update_title()
+            try:
+                self.query_one("#commit-list", ListView).focus()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # History actions
+    # ------------------------------------------------------------------
+
+    def action_reset_soft(self) -> None:
+        if not self._history_view:
+            return
+        commit = self._selected_commit()
+        if commit is None:
+            return
+        self._do_reset(commit.hash, "soft")
+
+    def action_reset_mixed(self) -> None:
+        if not self._history_view:
+            return
+        commit = self._selected_commit()
+        if commit is None:
+            return
+        self._do_reset(commit.hash, "mixed")
+
+    def action_reset_hard(self) -> None:
+        if not self._history_view:
+            return
+        commit = self._selected_commit()
+        if commit is None:
+            return
+        changed = len(self._changes)
+        warn = f"[bold red]Reset --hard[/]\n{commit.short_hash} {commit.message[:40]}\n"
+        if changed:
+            warn += f"\n워킹 디렉터리의 변경 파일 {changed}개가 [bold]영구 삭제[/]됩니다.\n"
+        warn += "\n진행하시겠습니까? (y / n)"
+        def _on_confirm(ok: bool | None) -> None:
+            if ok:
+                self._do_reset(commit.hash, "hard")
+        self.app.push_screen(ConfirmModal(warn), _on_confirm)
+
+    def action_revert_commit(self) -> None:
+        if not self._history_view:
+            return
+        commit = self._selected_commit()
+        if commit is None:
+            return
+        self._do_revert(commit.hash)
+
+    def _selected_commit(self) -> _Commit | None:
+        lv = self.query_one("#commit-list", ListView)
+        idx = lv.index
+        if idx is None or idx >= len(self._commits):
+            return None
+        return self._commits[idx]
+
+    def _rebuild_commit_list(self) -> None:
+        lv: ListView = self.query_one("#commit-list", ListView)
+        lv.clear()
+        if not self._commits:
+            lv.append(ListItem(Label("(커밋 없음)")))
+            return
+        for c in self._commits:
+            refs_part = f" [cyan]({c.refs})[/cyan]" if c.refs else ""
+            msg = c.message[:22] + "…" if len(c.message) > 22 else c.message
+            text = f"[dim]{c.short_hash}[/dim] [bright_black]{c.date}[/bright_black] {msg}{refs_part}"
+            lv.append(ListItem(Label(text)))
+
+    @work(thread=True)
+    def _load_commits(self) -> None:
+        commits = _get_log(self._work_dir())
+        def _apply() -> None:
+            self._commits = commits
+            self._rebuild_commit_list()
+            self._update_title()
+        self.app.call_from_thread(_apply)
+
+    @work(thread=True)
+    def _load_commit_diff(self, commit: _Commit) -> None:
+        cwd = self._work_dir()
+        try:
+            result = _run(["git", "show", "--stat", "--patch", commit.hash], cwd, timeout=15)
+            diff_text = result.stdout
+        except Exception as exc:
+            diff_text = f"오류: {exc}"
+        unified = _to_unified(diff_text) if diff_text else [Text("(diff 없음)", style="bright_black")]
+
+        def _update() -> None:
+            try:
+                self.query_one("#git-diff-title", Label).update(
+                    f"{commit.short_hash}  {commit.date}  {commit.author}  {commit.message[:50]}"
+                )
+                u_log = self.query_one("#git-diff-unified", RichLog)
+                u_log.clear()
+                for t in unified:
+                    u_log.write(t)
+                # split pane는 비워 둠
+                self.query_one("#git-diff-old", SyncedRichLog).clear()
+                self.query_one("#git-diff-new", SyncedRichLog).clear()
+            except Exception:
+                pass
+        self.app.call_from_thread(_update)
+
+    @work(thread=True)
+    def _do_reset(self, commit_hash: str, mode: str) -> None:
+        cwd = self._work_dir()
+        self.app.call_from_thread(self.app.notify, f"git reset --{mode} {commit_hash[:7]}...", timeout=2)
+        try:
+            result = subprocess.run(
+                ["git", "reset", f"--{mode}", commit_hash],
+                cwd=str(cwd), capture_output=True, text=True, timeout=30,
+            )
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, f"Reset --{mode} 완료", timeout=3)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            self.app.call_from_thread(self.app.notify, err, severity="error", timeout=5)
+        def _refresh() -> None:
+            self._changes = _get_status(self._work_dir())
+            self._rebuild_list()
+            self._update_title()
+            self._load_commits()
+        self.app.call_from_thread(_refresh)
+
+    @work(thread=True)
+    def _do_revert(self, commit_hash: str) -> None:
+        cwd = self._work_dir()
+        self.app.call_from_thread(self.app.notify, f"git revert {commit_hash[:7]}...", timeout=2)
+        try:
+            result = subprocess.run(
+                ["git", "revert", "--no-edit", commit_hash],
+                cwd=str(cwd), capture_output=True, text=True, timeout=30,
+            )
+        except Exception as exc:
+            self.app.call_from_thread(self.app.notify, str(exc), severity="error")
+            return
+        if result.returncode == 0:
+            self.app.call_from_thread(self.app.notify, "Revert 완료 (새 커밋 생성)", timeout=3)
+        else:
+            err = result.stderr.strip() or result.stdout.strip()
+            hint = "  (충돌 시 git revert --abort 로 취소)"
+            self.app.call_from_thread(
+                self.app.notify, err + hint, severity="error", timeout=8
+            )
+        def _refresh() -> None:
+            self._changes = _get_status(self._work_dir())
+            self._rebuild_list()
+            self._update_title()
+            self._load_commits()
+        self.app.call_from_thread(_refresh)
 
     def action_new_branch_input(self) -> None:
         if not self._branch_view:
@@ -665,6 +1008,13 @@ class GitPanel(Container):
     # ------------------------------------------------------------------
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if event.list_view.id == "commit-list":
+            idx = event.list_view.index
+            if idx is None or idx >= len(self._commits):
+                self._clear_diff()
+                return
+            self._load_commit_diff(self._commits[idx])
+            return
         if event.list_view.id != "git-file-list":
             return
         idx = event.list_view.index
@@ -827,7 +1177,15 @@ class GitPanel(Container):
     # ------------------------------------------------------------------
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-stage-all":
+        if event.button.id == "btn-reset-soft":
+            self.action_reset_soft()
+        elif event.button.id == "btn-reset-mixed":
+            self.action_reset_mixed()
+        elif event.button.id == "btn-reset-hard":
+            self.action_reset_hard()
+        elif event.button.id == "btn-revert":
+            self.action_revert_commit()
+        elif event.button.id == "btn-stage-all":
             self.action_stage_all()
         elif event.button.id == "btn-commit":
             self._do_commit()
@@ -835,6 +1193,8 @@ class GitPanel(Container):
             self._do_pull()
         elif event.button.id == "btn-push":
             self._do_push()
+        elif event.button.id == "btn-restore":
+            self.action_restore()
         elif event.button.id == "btn-review":
             self.action_review()
         elif event.button.id == "btn-git-init":

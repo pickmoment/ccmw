@@ -524,6 +524,55 @@ TerminalPanel > #terminal-output {
 }
 
 /* -------------------------------------------------------------------------
+   히스토리 뷰
+   ------------------------------------------------------------------------- */
+
+#history-view {
+    width: 100%;
+    height: 1fr;
+    layout: vertical;
+}
+
+#commit-list {
+    height: 1fr;
+    background: $surface;
+    scrollbar-color: $accent-darken-2;
+    scrollbar-color-hover: $accent;
+}
+
+#commit-list > ListItem {
+    background: $surface;
+    padding: 0 1;
+    border-left: thick $surface;
+}
+
+#commit-list > ListItem:hover {
+    background: $surface-lighten-1;
+}
+
+#commit-list > ListItem.--highlight {
+    background: $surface-lighten-2;
+    border-left: thick $surface-lighten-2;
+}
+
+#commit-list:focus > ListItem.--highlight {
+    background: $accent-darken-2;
+    border-left: thick $accent;
+}
+
+#git-history-buttons {
+    width: 100%;
+    height: 3;
+    padding: 0 1;
+}
+
+#git-history-buttons Button {
+    margin: 0 0 0 1;
+    width: 1fr;
+    min-width: 0;
+}
+
+/* -------------------------------------------------------------------------
    Utility
    ------------------------------------------------------------------------- */
 
