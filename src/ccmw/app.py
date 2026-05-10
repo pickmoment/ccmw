@@ -319,14 +319,17 @@ class CCMWApp(App):
 
     def action_toggle_git(self) -> None:
         panel = self.query_one("#git-panel", GitPanel)
+        main = self.query_one("#main-container")
         if self._git_panel_visible:
             panel.add_class("hidden")
+            main.remove_class("hidden")
             self._git_panel_visible = False
             try:
                 self.query_one("#terminal-panel", MultiTerminalPanel).focus_active()
             except Exception:
                 pass
         else:
+            main.add_class("hidden")
             panel.remove_class("hidden")
             self._git_panel_visible = True
             panel.action_refresh()

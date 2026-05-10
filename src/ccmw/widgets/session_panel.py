@@ -13,6 +13,7 @@ from textual.message import Message
 from textual.widgets import Label, ListItem, ListView
 
 from ccmw.session_manager import Session, SessionManager
+from ccmw.widgets.session_history_modal import SessionHistoryModal
 
 
 _STATUS_ICON = {
@@ -28,6 +29,7 @@ class SessionPanel(Container):
     BINDINGS = [
         Binding("r", "refresh", "새로고침", show=True),
         Binding("enter", "open", "세션 열기", show=True, priority=True),
+        Binding("v", "view_history", "대화 이력", show=True),
         Binding("ctrl+k", "remove", "목록 제거", show=True),
         Binding("escape", "close", "닫기", show=False, priority=True),
     ]
@@ -86,6 +88,11 @@ class SessionPanel(Container):
         s = self._current()
         if s:
             self.post_message(self.SessionSelected(s))
+
+    def action_view_history(self) -> None:
+        s = self._current()
+        if s:
+            self.app.push_screen(SessionHistoryModal(s))
 
     def action_close(self) -> None:
         self.post_message(self.CloseRequested())

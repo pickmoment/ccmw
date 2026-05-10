@@ -390,10 +390,10 @@ class GitPanel(Container):
                         yield Button("✦ AI 리뷰", id="btn-review-commit", variant="success")
             with Vertical(id="git-diff-pane"):
                 yield Label("", id="git-diff-title")
-                yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False, classes="hidden")
+                yield RichLog(id="git-diff-unified", markup=False, highlight=False, wrap=False, auto_scroll=False, classes="hidden")
                 with Horizontal(id="git-diff-split"):
-                    yield SyncedRichLog(id="git-diff-old", markup=False, highlight=False, wrap=False)
-                    yield SyncedRichLog(id="git-diff-new", markup=False, highlight=False, wrap=False)
+                    yield SyncedRichLog(id="git-diff-old", markup=False, highlight=False, wrap=False, auto_scroll=False)
+                    yield SyncedRichLog(id="git-diff-new", markup=False, highlight=False, wrap=False, auto_scroll=False)
 
     def on_mount(self) -> None:
         self._root = _get_git_root(self._cwd)

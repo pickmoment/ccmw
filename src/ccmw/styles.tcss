@@ -319,11 +319,9 @@ TerminalPanel > #terminal-output {
 
 #git-panel {
     width: 100%;
-    height: 35;
-    max-height: 35;
+    height: 1fr;
     border: solid $surface-lighten-2;
     background: $surface;
-    layer: base;
 }
 
 #git-panel:focus-within {

@@ -69,11 +69,18 @@ class ClaudeReviewModal(ModalScreen):
     }
     """
 
-    def __init__(self, diff_text: str, title: str, cwd: Path) -> None:
+    def __init__(
+        self,
+        diff_text: str,
+        title: str,
+        cwd: Path,
+        initial_prompt: str | None = None,
+    ) -> None:
         super().__init__()
         self._diff_text = diff_text
         self._title = title
         self._cwd = cwd
+        self._initial_prompt = initial_prompt
         self._session_id: str | None = None
         self._running = False
         self._line_buf = ""
@@ -90,6 +97,7 @@ class ClaudeReviewModal(ModalScreen):
                 markup=False,
                 highlight=False,
                 wrap=True,
+                auto_scroll=False,
             )
             yield Label("⏳ 리뷰 생성 중...", id="review-status")
             yield Input(
@@ -107,16 +115,19 @@ class ClaudeReviewModal(ModalScreen):
 
     @work(thread=True)
     def _start_review(self) -> None:
-        prompt = (
-            "아래 코드 변경 사항들을 리뷰하고 테크니컬 레포트를 작성해 주세요.\n"
-            "관련 내용을 잘 모르는 사람도 이해할 수 있도록 쉽게 설명해 주세요.\n\n"
-            f"```diff\n{self._diff_text}\n```\n\n"
-            "다음 항목들을 포함해서 한국어로 작성해 주세요:\n"
-            "1. 전체 변경 사항 요약\n"
-            "2. 파일별 주요 변경 내용 상세 설명\n"
-            "3. 잠재적 이슈 또는 주의점\n"
-            "4. 전체적인 평가"
-        )
+        if self._initial_prompt:
+            prompt = self._initial_prompt
+        else:
+            prompt = (
+                "아래 코드 변경 사항들을 리뷰하고 테크니컬 레포트를 작성해 주세요.\n"
+                "관련 내용을 잘 모르는 사람도 이해할 수 있도록 쉽게 설명해 주세요.\n\n"
+                f"```diff\n{self._diff_text}\n```\n\n"
+                "다음 항목들을 포함해서 한국어로 작성해 주세요:\n"
+                "1. 전체 변경 사항 요약\n"
+                "2. 파일별 주요 변경 내용 상세 설명\n"
+                "3. 잠재적 이슈 또는 주의점\n"
+                "4. 전체적인 평가"
+            )
         self._run_claude(prompt)
 
     @work(thread=True)
